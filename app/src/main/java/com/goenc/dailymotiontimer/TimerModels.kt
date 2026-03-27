@@ -39,8 +39,8 @@ data class TimerUiState(
 
 data class PersistedTimerState(
     val currentPhase: WalkingPhase,
-    val totalElapsedBeforeRunSeconds: Int,
-    val phaseElapsedBeforeRunSeconds: Int,
+    val totalElapsedBeforeRunMillis: Long,
+    val phaseElapsedBeforeRunMillis: Long,
     val fastPhaseDurationSeconds: Int,
     val slowPhaseDurationSeconds: Int,
     val runStartedAtElapsedRealtime: Long,
@@ -64,13 +64,13 @@ data class PersistedTimerState(
         if (!isRunning) {
             return TimerUiState(
                 currentPhase = currentPhase,
-                remainingSeconds = remainingSecondsForPhase(
+                remainingSeconds = remainingSecondsForPhaseMillis(
                     phase = currentPhase,
-                    phaseElapsedSeconds = phaseElapsedBeforeRunSeconds,
+                    phaseElapsedMillis = phaseElapsedBeforeRunMillis,
                     fastPhaseDurationSeconds = fastDuration,
                     slowPhaseDurationSeconds = slowDuration,
                 ),
-                elapsedSeconds = totalElapsedBeforeRunSeconds,
+                elapsedSeconds = elapsedSecondsFromMillis(totalElapsedBeforeRunMillis),
                 fastPhaseDurationSeconds = fastDuration,
                 slowPhaseDurationSeconds = slowDuration,
                 isRunning = false,
@@ -78,33 +78,71 @@ data class PersistedTimerState(
             )
         }
 
-        val deltaSeconds = (resolveElapsedDeltaMillis(
-            nowElapsedRealtime = nowElapsedRealtime,
-            nowWallClockMillis = nowWallClockMillis,
-        ) / 1_000L).toInt()
-        val totalElapsedSeconds = totalElapsedBeforeRunSeconds + deltaSeconds
-        val phaseProgress = advancePhaseProgress(
-            startingPhase = currentPhase,
-            startingPhaseElapsedSeconds = phaseElapsedBeforeRunSeconds,
-            additionalElapsedSeconds = deltaSeconds,
-            fastPhaseDurationSeconds = fastDuration,
-            slowPhaseDurationSeconds = slowDuration,
-        )
+        val canUseStoredRealtimeBase =
+            runStartedAtElapsedRealtime > 0L &&
+                phaseStartedAtElapsedRealtime > 0L &&
+                nowElapsedRealtime >= runStartedAtElapsedRealtime &&
+                nowElapsedRealtime >= phaseStartedAtElapsedRealtime
 
-        return TimerUiState(
-            currentPhase = phaseProgress.currentPhase,
-            remainingSeconds = remainingSecondsForPhase(
-                phase = phaseProgress.currentPhase,
-                phaseElapsedSeconds = phaseProgress.phaseElapsedSeconds,
+        return if (canUseStoredRealtimeBase) {
+            val totalElapsedMillis =
+                totalElapsedBeforeRunMillis + (nowElapsedRealtime - runStartedAtElapsedRealtime)
+            val phaseProgress = advancePhaseProgressMillis(
+                startingPhase = currentPhase,
+                startingPhaseElapsedMillis = phaseElapsedBeforeRunMillis,
+                additionalElapsedMillis = nowElapsedRealtime - phaseStartedAtElapsedRealtime,
                 fastPhaseDurationSeconds = fastDuration,
                 slowPhaseDurationSeconds = slowDuration,
-            ),
-            elapsedSeconds = totalElapsedSeconds,
-            fastPhaseDurationSeconds = fastDuration,
-            slowPhaseDurationSeconds = slowDuration,
-            isRunning = true,
-            isPaused = false,
-        )
+            )
+            TimerUiState(
+                currentPhase = phaseProgress.currentPhase,
+                remainingSeconds = remainingSecondsForPhaseMillis(
+                    phase = phaseProgress.currentPhase,
+                    phaseElapsedMillis = phaseProgress.phaseElapsedMillis,
+                    fastPhaseDurationSeconds = fastDuration,
+                    slowPhaseDurationSeconds = slowDuration,
+                ),
+                elapsedSeconds = elapsedSecondsFromMillis(totalElapsedMillis),
+                fastPhaseDurationSeconds = fastDuration,
+                slowPhaseDurationSeconds = slowDuration,
+                isRunning = true,
+                isPaused = false,
+            )
+        } else {
+            val deltaMillis = resolveElapsedDeltaMillis(
+                nowElapsedRealtime = nowElapsedRealtime,
+                nowWallClockMillis = nowWallClockMillis,
+            )
+            val notificationPhaseElapsedMillis = elapsedMillisInPhase(
+                phase = notificationPhase,
+                remainingSeconds = notificationRemainingSeconds,
+                fastPhaseDurationSeconds = fastDuration,
+                slowPhaseDurationSeconds = slowDuration,
+            )
+            val phaseProgress = advancePhaseProgressMillis(
+                startingPhase = notificationPhase,
+                startingPhaseElapsedMillis = notificationPhaseElapsedMillis,
+                additionalElapsedMillis = deltaMillis,
+                fastPhaseDurationSeconds = fastDuration,
+                slowPhaseDurationSeconds = slowDuration,
+            )
+            TimerUiState(
+                currentPhase = phaseProgress.currentPhase,
+                remainingSeconds = remainingSecondsForPhaseMillis(
+                    phase = phaseProgress.currentPhase,
+                    phaseElapsedMillis = phaseProgress.phaseElapsedMillis,
+                    fastPhaseDurationSeconds = fastDuration,
+                    slowPhaseDurationSeconds = slowDuration,
+                ),
+                elapsedSeconds = elapsedSecondsFromMillis(
+                    notificationElapsedSeconds.toLong() * 1_000L + deltaMillis,
+                ),
+                fastPhaseDurationSeconds = fastDuration,
+                slowPhaseDurationSeconds = slowDuration,
+                isRunning = true,
+                isPaused = false,
+            )
+        }
     }
 
     fun notificationUiState(): TimerUiState {
@@ -142,6 +180,11 @@ data class PhaseProgress(
     val phaseElapsedSeconds: Int,
 )
 
+data class PhaseProgressMillis(
+    val currentPhase: WalkingPhase,
+    val phaseElapsedMillis: Long,
+)
+
 internal fun normalizePhaseDurationSeconds(seconds: Int): Int {
     return if (seconds in PHASE_DURATION_OPTIONS_SECONDS) {
         seconds
@@ -172,6 +215,21 @@ internal fun remainingSecondsForPhase(
     return durationSeconds - phaseElapsedSeconds.coerceIn(0, durationSeconds)
 }
 
+internal fun remainingSecondsForPhaseMillis(
+    phase: WalkingPhase,
+    phaseElapsedMillis: Long,
+    fastPhaseDurationSeconds: Int,
+    slowPhaseDurationSeconds: Int,
+): Int {
+    val durationMillis = phaseDurationMillis(
+        phase = phase,
+        fastPhaseDurationSeconds = fastPhaseDurationSeconds,
+        slowPhaseDurationSeconds = slowPhaseDurationSeconds,
+    )
+    val clampedRemainingMillis = (durationMillis - phaseElapsedMillis).coerceIn(0L, durationMillis)
+    return ((clampedRemainingMillis + 999L) / 1_000L).toInt()
+}
+
 internal fun elapsedSecondsInPhase(
     phase: WalkingPhase,
     remainingSeconds: Int,
@@ -184,6 +242,20 @@ internal fun elapsedSecondsInPhase(
         slowPhaseDurationSeconds = slowPhaseDurationSeconds,
     )
     return (durationSeconds - remainingSeconds).coerceIn(0, durationSeconds)
+}
+
+internal fun elapsedMillisInPhase(
+    phase: WalkingPhase,
+    remainingSeconds: Int,
+    fastPhaseDurationSeconds: Int,
+    slowPhaseDurationSeconds: Int,
+): Long {
+    return elapsedSecondsInPhase(
+        phase = phase,
+        remainingSeconds = remainingSeconds,
+        fastPhaseDurationSeconds = fastPhaseDurationSeconds,
+        slowPhaseDurationSeconds = slowPhaseDurationSeconds,
+    ).toLong() * 1_000L
 }
 
 internal fun advancePhaseProgress(
@@ -215,6 +287,33 @@ internal fun advancePhaseProgress(
     }
 }
 
+internal fun advancePhaseProgressMillis(
+    startingPhase: WalkingPhase,
+    startingPhaseElapsedMillis: Long,
+    additionalElapsedMillis: Long,
+    fastPhaseDurationSeconds: Int,
+    slowPhaseDurationSeconds: Int,
+): PhaseProgressMillis {
+    var currentPhase = startingPhase
+    var phaseElapsedMillis = startingPhaseElapsedMillis + additionalElapsedMillis
+
+    while (true) {
+        val currentPhaseDurationMillis = phaseDurationMillis(
+            phase = currentPhase,
+            fastPhaseDurationSeconds = fastPhaseDurationSeconds,
+            slowPhaseDurationSeconds = slowPhaseDurationSeconds,
+        )
+        if (phaseElapsedMillis < currentPhaseDurationMillis) {
+            return PhaseProgressMillis(
+                currentPhase = currentPhase,
+                phaseElapsedMillis = phaseElapsedMillis,
+            )
+        }
+        phaseElapsedMillis -= currentPhaseDurationMillis
+        currentPhase = currentPhase.next()
+    }
+}
+
 internal fun TimerUiState.toPersistedState(
     nowElapsedRealtime: Long,
     nowWallClockMillis: Long,
@@ -223,8 +322,8 @@ internal fun TimerUiState.toPersistedState(
     val normalizedSlowDuration = normalizePhaseDurationSeconds(slowPhaseDurationSeconds)
     return PersistedTimerState(
         currentPhase = currentPhase,
-        totalElapsedBeforeRunSeconds = elapsedSeconds,
-        phaseElapsedBeforeRunSeconds = elapsedSecondsInPhase(
+        totalElapsedBeforeRunMillis = elapsedSeconds.toLong() * 1_000L,
+        phaseElapsedBeforeRunMillis = elapsedMillisInPhase(
             phase = currentPhase,
             remainingSeconds = remainingSeconds,
             fastPhaseDurationSeconds = normalizedFastDuration,
@@ -244,6 +343,22 @@ internal fun TimerUiState.toPersistedState(
         notificationIsRunning = isRunning,
         notificationIsPaused = isPaused,
     )
+}
+
+internal fun phaseDurationMillis(
+    phase: WalkingPhase,
+    fastPhaseDurationSeconds: Int,
+    slowPhaseDurationSeconds: Int,
+): Long {
+    return phaseDurationSeconds(
+        phase = phase,
+        fastPhaseDurationSeconds = fastPhaseDurationSeconds,
+        slowPhaseDurationSeconds = slowPhaseDurationSeconds,
+    ).toLong() * 1_000L
+}
+
+internal fun elapsedSecondsFromMillis(elapsedMillis: Long): Int {
+    return (elapsedMillis / 1_000L).toInt()
 }
 
 internal fun formatRemainingDuration(totalSeconds: Int): String {

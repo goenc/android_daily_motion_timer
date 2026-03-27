@@ -7,6 +7,8 @@ internal object WalkingTimerStateStore {
     private const val KEY_CURRENT_PHASE = "current_phase"
     private const val KEY_TOTAL_ELAPSED_BEFORE_RUN_SECONDS = "total_elapsed_before_run_seconds"
     private const val KEY_PHASE_ELAPSED_BEFORE_RUN_SECONDS = "phase_elapsed_before_run_seconds"
+    private const val KEY_TOTAL_ELAPSED_BEFORE_RUN_MILLIS = "total_elapsed_before_run_millis"
+    private const val KEY_PHASE_ELAPSED_BEFORE_RUN_MILLIS = "phase_elapsed_before_run_millis"
     private const val KEY_FAST_PHASE_DURATION_SECONDS = "fast_phase_duration_seconds"
     private const val KEY_SLOW_PHASE_DURATION_SECONDS = "slow_phase_duration_seconds"
     private const val KEY_RUN_STARTED_AT_ELAPSED_REALTIME = "run_started_at_elapsed_realtime"
@@ -29,8 +31,14 @@ internal object WalkingTimerStateStore {
 
         return PersistedTimerState(
             currentPhase = prefs.readPhase(KEY_CURRENT_PHASE, WalkingPhase.Fast),
-            totalElapsedBeforeRunSeconds = prefs.getInt(KEY_TOTAL_ELAPSED_BEFORE_RUN_SECONDS, 0),
-            phaseElapsedBeforeRunSeconds = prefs.getInt(KEY_PHASE_ELAPSED_BEFORE_RUN_SECONDS, 0),
+            totalElapsedBeforeRunMillis = prefs.getLongOrFallbackSeconds(
+                longKey = KEY_TOTAL_ELAPSED_BEFORE_RUN_MILLIS,
+                secondsKey = KEY_TOTAL_ELAPSED_BEFORE_RUN_SECONDS,
+            ),
+            phaseElapsedBeforeRunMillis = prefs.getLongOrFallbackSeconds(
+                longKey = KEY_PHASE_ELAPSED_BEFORE_RUN_MILLIS,
+                secondsKey = KEY_PHASE_ELAPSED_BEFORE_RUN_SECONDS,
+            ),
             fastPhaseDurationSeconds = normalizePhaseDurationSeconds(
                 prefs.getInt(KEY_FAST_PHASE_DURATION_SECONDS, DEFAULT_PHASE_DURATION_SECONDS),
             ),
@@ -59,8 +67,16 @@ internal object WalkingTimerStateStore {
             .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit()
             .putString(KEY_CURRENT_PHASE, state.currentPhase.name)
-            .putInt(KEY_TOTAL_ELAPSED_BEFORE_RUN_SECONDS, state.totalElapsedBeforeRunSeconds)
-            .putInt(KEY_PHASE_ELAPSED_BEFORE_RUN_SECONDS, state.phaseElapsedBeforeRunSeconds)
+            .putInt(
+                KEY_TOTAL_ELAPSED_BEFORE_RUN_SECONDS,
+                elapsedSecondsFromMillis(state.totalElapsedBeforeRunMillis),
+            )
+            .putInt(
+                KEY_PHASE_ELAPSED_BEFORE_RUN_SECONDS,
+                elapsedSecondsFromMillis(state.phaseElapsedBeforeRunMillis),
+            )
+            .putLong(KEY_TOTAL_ELAPSED_BEFORE_RUN_MILLIS, state.totalElapsedBeforeRunMillis)
+            .putLong(KEY_PHASE_ELAPSED_BEFORE_RUN_MILLIS, state.phaseElapsedBeforeRunMillis)
             .putInt(KEY_FAST_PHASE_DURATION_SECONDS, state.fastPhaseDurationSeconds)
             .putInt(KEY_SLOW_PHASE_DURATION_SECONDS, state.slowPhaseDurationSeconds)
             .putLong(KEY_RUN_STARTED_AT_ELAPSED_REALTIME, state.runStartedAtElapsedRealtime)
@@ -91,5 +107,15 @@ internal object WalkingTimerStateStore {
     ): WalkingPhase {
         val rawValue = getString(key, defaultValue.name) ?: return defaultValue
         return runCatching { WalkingPhase.valueOf(rawValue) }.getOrDefault(defaultValue)
+    }
+
+    private fun android.content.SharedPreferences.getLongOrFallbackSeconds(
+        longKey: String,
+        secondsKey: String,
+    ): Long {
+        if (contains(longKey)) {
+            return getLong(longKey, 0L)
+        }
+        return getInt(secondsKey, 0).toLong() * 1_000L
     }
 }
