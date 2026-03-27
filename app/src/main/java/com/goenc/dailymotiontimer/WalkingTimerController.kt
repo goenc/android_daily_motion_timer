@@ -61,7 +61,52 @@ object WalkingTimerController {
         )
     }
 
+    fun updateFastPhaseDurationSeconds(context: Context, durationSeconds: Int) {
+        updateIdlePhaseDurations(
+            context = context,
+            fastPhaseDurationSeconds = durationSeconds,
+            slowPhaseDurationSeconds = _uiState.value.slowPhaseDurationSeconds,
+        )
+    }
+
+    fun updateSlowPhaseDurationSeconds(context: Context, durationSeconds: Int) {
+        updateIdlePhaseDurations(
+            context = context,
+            fastPhaseDurationSeconds = _uiState.value.fastPhaseDurationSeconds,
+            slowPhaseDurationSeconds = durationSeconds,
+        )
+    }
+
     internal fun publishState(state: TimerUiState) {
         _uiState.value = state
+    }
+
+    private fun updateIdlePhaseDurations(
+        context: Context,
+        fastPhaseDurationSeconds: Int,
+        slowPhaseDurationSeconds: Int,
+    ) {
+        val currentState = _uiState.value
+        if (currentState.isActive) {
+            return
+        }
+
+        val updatedState = TimerUiState(
+            currentPhase = WalkingPhase.Fast,
+            remainingSeconds = normalizePhaseDurationSeconds(fastPhaseDurationSeconds),
+            elapsedSeconds = 0,
+            fastPhaseDurationSeconds = normalizePhaseDurationSeconds(fastPhaseDurationSeconds),
+            slowPhaseDurationSeconds = normalizePhaseDurationSeconds(slowPhaseDurationSeconds),
+            isRunning = false,
+            isPaused = false,
+        )
+        publishState(updatedState)
+        WalkingTimerStateStore.save(
+            context.applicationContext,
+            updatedState.toPersistedState(
+                nowElapsedRealtime = SystemClock.elapsedRealtime(),
+                nowWallClockMillis = System.currentTimeMillis(),
+            ),
+        )
     }
 }

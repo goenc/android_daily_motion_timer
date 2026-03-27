@@ -36,6 +36,8 @@ class WalkingTimerService : Service() {
     private var currentPhase = WalkingPhase.Fast
     private var totalElapsedBeforeRunSeconds = 0
     private var phaseElapsedBeforeRunSeconds = 0
+    private var fastPhaseDurationSeconds = DEFAULT_PHASE_DURATION_SECONDS
+    private var slowPhaseDurationSeconds = DEFAULT_PHASE_DURATION_SECONDS
     private var runStartedAtElapsedRealtime = 0L
     private var phaseStartedAtElapsedRealtime = 0L
     private var isRunning = false
@@ -87,7 +89,8 @@ class WalkingTimerService : Service() {
         }
 
         if (!isPaused) {
-            resetTimerState()
+            restoreConfiguredPhaseDurations()
+            resetTimerProgressState()
         }
 
         val now = SystemClock.elapsedRealtime()
@@ -120,7 +123,12 @@ class WalkingTimerService : Service() {
             announceTransitions = true,
         )
         totalElapsedBeforeRunSeconds = state.elapsedSeconds
-        phaseElapsedBeforeRunSeconds = PHASE_DURATION_SECONDS - state.remainingSeconds
+        phaseElapsedBeforeRunSeconds = elapsedSecondsInPhase(
+            phase = state.currentPhase,
+            remainingSeconds = state.remainingSeconds,
+            fastPhaseDurationSeconds = fastPhaseDurationSeconds,
+            slowPhaseDurationSeconds = slowPhaseDurationSeconds,
+        )
         isRunning = false
         isPaused = true
         runStartedAtElapsedRealtime = 0L
@@ -136,12 +144,13 @@ class WalkingTimerService : Service() {
     private fun stopTimer() {
         tickerJob?.cancel()
         tickerJob = null
-        resetTimerState()
-        WalkingTimerStateStore.clear(this)
+        resetTimerProgressState()
+        val stoppedState = currentUiState()
+        persistState(stoppedState)
         hasForegroundNotification = false
         stopForeground(STOP_FOREGROUND_REMOVE)
         NotificationManagerCompat.from(this).cancel(NOTIFICATION_ID)
-        publishCurrentState()
+        publishState(stoppedState)
         stopSelf()
     }
 
@@ -164,8 +173,15 @@ class WalkingTimerService : Service() {
         if (!isRunning) {
             return TimerUiState(
                 currentPhase = currentPhase,
-                remainingSeconds = PHASE_DURATION_SECONDS - phaseElapsedBeforeRunSeconds,
+                remainingSeconds = remainingSecondsForPhase(
+                    phase = currentPhase,
+                    phaseElapsedSeconds = phaseElapsedBeforeRunSeconds,
+                    fastPhaseDurationSeconds = fastPhaseDurationSeconds,
+                    slowPhaseDurationSeconds = slowPhaseDurationSeconds,
+                ),
                 elapsedSeconds = totalElapsedBeforeRunSeconds,
+                fastPhaseDurationSeconds = fastPhaseDurationSeconds,
+                slowPhaseDurationSeconds = slowPhaseDurationSeconds,
                 isRunning = false,
                 isPaused = isPaused,
             )
@@ -173,23 +189,33 @@ class WalkingTimerService : Service() {
 
         val totalElapsedSeconds =
             totalElapsedBeforeRunSeconds + ((now - runStartedAtElapsedRealtime) / 1_000L).toInt()
-        var phaseElapsedSeconds =
-            phaseElapsedBeforeRunSeconds + ((now - phaseStartedAtElapsedRealtime) / 1_000L).toInt()
-
-        while (phaseElapsedSeconds >= PHASE_DURATION_SECONDS) {
-            phaseElapsedSeconds -= PHASE_DURATION_SECONDS
-            currentPhase = currentPhase.next()
-            phaseElapsedBeforeRunSeconds = phaseElapsedSeconds
-            phaseStartedAtElapsedRealtime = now - (phaseElapsedSeconds * 1_000L)
-            if (announceTransitions) {
-                announcePhaseTransition(currentPhase)
-            }
-        }
+        val phaseProgress = advancePhaseProgress(
+            startingPhase = currentPhase,
+            startingPhaseElapsedSeconds = phaseElapsedBeforeRunSeconds,
+            additionalElapsedSeconds = ((now - phaseStartedAtElapsedRealtime) / 1_000L).toInt(),
+            fastPhaseDurationSeconds = fastPhaseDurationSeconds,
+            slowPhaseDurationSeconds = slowPhaseDurationSeconds,
+            onPhaseTransition = { nextPhase ->
+                if (announceTransitions) {
+                    announcePhaseTransition(nextPhase)
+                }
+            },
+        )
+        currentPhase = phaseProgress.currentPhase
+        phaseElapsedBeforeRunSeconds = phaseProgress.phaseElapsedSeconds
+        phaseStartedAtElapsedRealtime = now - (phaseProgress.phaseElapsedSeconds * 1_000L)
 
         return TimerUiState(
             currentPhase = currentPhase,
-            remainingSeconds = PHASE_DURATION_SECONDS - phaseElapsedSeconds,
+            remainingSeconds = remainingSecondsForPhase(
+                phase = currentPhase,
+                phaseElapsedSeconds = phaseProgress.phaseElapsedSeconds,
+                fastPhaseDurationSeconds = fastPhaseDurationSeconds,
+                slowPhaseDurationSeconds = slowPhaseDurationSeconds,
+            ),
             elapsedSeconds = totalElapsedSeconds,
+            fastPhaseDurationSeconds = fastPhaseDurationSeconds,
+            slowPhaseDurationSeconds = slowPhaseDurationSeconds,
             isRunning = true,
             isPaused = false,
         )
@@ -368,7 +394,14 @@ class WalkingTimerService : Service() {
 
         currentPhase = restoredState.currentPhase
         totalElapsedBeforeRunSeconds = restoredState.elapsedSeconds
-        phaseElapsedBeforeRunSeconds = PHASE_DURATION_SECONDS - restoredState.remainingSeconds
+        fastPhaseDurationSeconds = restoredState.fastPhaseDurationSeconds
+        slowPhaseDurationSeconds = restoredState.slowPhaseDurationSeconds
+        phaseElapsedBeforeRunSeconds = elapsedSecondsInPhase(
+            phase = restoredState.currentPhase,
+            remainingSeconds = restoredState.remainingSeconds,
+            fastPhaseDurationSeconds = fastPhaseDurationSeconds,
+            slowPhaseDurationSeconds = slowPhaseDurationSeconds,
+        )
         isRunning = restoredState.isRunning
         isPaused = restoredState.isPaused
         if (restoredState.isRunning) {
@@ -381,26 +414,18 @@ class WalkingTimerService : Service() {
         return restoredState
     }
 
+    private fun restoreConfiguredPhaseDurations() {
+        val persistedState = WalkingTimerStateStore.load(this) ?: return
+        fastPhaseDurationSeconds = persistedState.fastPhaseDurationSeconds
+        slowPhaseDurationSeconds = persistedState.slowPhaseDurationSeconds
+    }
+
     private fun persistState(state: TimerUiState) {
-        val nowElapsedRealtime = SystemClock.elapsedRealtime()
-        val normalizedPhaseElapsed = PHASE_DURATION_SECONDS - state.remainingSeconds
         WalkingTimerStateStore.save(
             this,
-            PersistedTimerState(
-                currentPhase = state.currentPhase,
-                totalElapsedBeforeRunSeconds = state.elapsedSeconds,
-                phaseElapsedBeforeRunSeconds = normalizedPhaseElapsed,
-                runStartedAtElapsedRealtime = if (state.isRunning) nowElapsedRealtime else 0L,
-                phaseStartedAtElapsedRealtime = if (state.isRunning) nowElapsedRealtime else 0L,
-                persistedAtElapsedRealtime = nowElapsedRealtime,
-                persistedAtWallClockMillis = System.currentTimeMillis(),
-                isRunning = state.isRunning,
-                isPaused = state.isPaused,
-                notificationPhase = state.currentPhase,
-                notificationRemainingSeconds = state.remainingSeconds,
-                notificationElapsedSeconds = state.elapsedSeconds,
-                notificationIsRunning = state.isRunning,
-                notificationIsPaused = state.isPaused,
+            state.toPersistedState(
+                nowElapsedRealtime = SystemClock.elapsedRealtime(),
+                nowWallClockMillis = System.currentTimeMillis(),
             ),
         )
     }
@@ -414,15 +439,22 @@ class WalkingTimerService : Service() {
         } else {
             TimerUiState(
                 currentPhase = currentPhase,
-                remainingSeconds = PHASE_DURATION_SECONDS - phaseElapsedBeforeRunSeconds,
+                remainingSeconds = remainingSecondsForPhase(
+                    phase = currentPhase,
+                    phaseElapsedSeconds = phaseElapsedBeforeRunSeconds,
+                    fastPhaseDurationSeconds = fastPhaseDurationSeconds,
+                    slowPhaseDurationSeconds = slowPhaseDurationSeconds,
+                ),
                 elapsedSeconds = totalElapsedBeforeRunSeconds,
+                fastPhaseDurationSeconds = fastPhaseDurationSeconds,
+                slowPhaseDurationSeconds = slowPhaseDurationSeconds,
                 isRunning = false,
                 isPaused = isPaused,
             )
         }
     }
 
-    private fun resetTimerState() {
+    private fun resetTimerProgressState() {
         currentPhase = WalkingPhase.Fast
         totalElapsedBeforeRunSeconds = 0
         phaseElapsedBeforeRunSeconds = 0

@@ -7,6 +7,8 @@ internal object WalkingTimerStateStore {
     private const val KEY_CURRENT_PHASE = "current_phase"
     private const val KEY_TOTAL_ELAPSED_BEFORE_RUN_SECONDS = "total_elapsed_before_run_seconds"
     private const val KEY_PHASE_ELAPSED_BEFORE_RUN_SECONDS = "phase_elapsed_before_run_seconds"
+    private const val KEY_FAST_PHASE_DURATION_SECONDS = "fast_phase_duration_seconds"
+    private const val KEY_SLOW_PHASE_DURATION_SECONDS = "slow_phase_duration_seconds"
     private const val KEY_RUN_STARTED_AT_ELAPSED_REALTIME = "run_started_at_elapsed_realtime"
     private const val KEY_PHASE_STARTED_AT_ELAPSED_REALTIME = "phase_started_at_elapsed_realtime"
     private const val KEY_PERSISTED_AT_ELAPSED_REALTIME = "persisted_at_elapsed_realtime"
@@ -29,6 +31,12 @@ internal object WalkingTimerStateStore {
             currentPhase = prefs.readPhase(KEY_CURRENT_PHASE, WalkingPhase.Fast),
             totalElapsedBeforeRunSeconds = prefs.getInt(KEY_TOTAL_ELAPSED_BEFORE_RUN_SECONDS, 0),
             phaseElapsedBeforeRunSeconds = prefs.getInt(KEY_PHASE_ELAPSED_BEFORE_RUN_SECONDS, 0),
+            fastPhaseDurationSeconds = normalizePhaseDurationSeconds(
+                prefs.getInt(KEY_FAST_PHASE_DURATION_SECONDS, DEFAULT_PHASE_DURATION_SECONDS),
+            ),
+            slowPhaseDurationSeconds = normalizePhaseDurationSeconds(
+                prefs.getInt(KEY_SLOW_PHASE_DURATION_SECONDS, DEFAULT_PHASE_DURATION_SECONDS),
+            ),
             runStartedAtElapsedRealtime = prefs.getLong(KEY_RUN_STARTED_AT_ELAPSED_REALTIME, 0L),
             phaseStartedAtElapsedRealtime = prefs.getLong(KEY_PHASE_STARTED_AT_ELAPSED_REALTIME, 0L),
             persistedAtElapsedRealtime = prefs.getLong(KEY_PERSISTED_AT_ELAPSED_REALTIME, 0L),
@@ -38,7 +46,7 @@ internal object WalkingTimerStateStore {
             notificationPhase = prefs.readPhase(KEY_NOTIFICATION_PHASE, WalkingPhase.Fast),
             notificationRemainingSeconds = prefs.getInt(
                 KEY_NOTIFICATION_REMAINING_SECONDS,
-                PHASE_DURATION_SECONDS,
+                DEFAULT_PHASE_DURATION_SECONDS,
             ),
             notificationElapsedSeconds = prefs.getInt(KEY_NOTIFICATION_ELAPSED_SECONDS, 0),
             notificationIsRunning = prefs.getBoolean(KEY_NOTIFICATION_IS_RUNNING, false),
@@ -53,6 +61,8 @@ internal object WalkingTimerStateStore {
             .putString(KEY_CURRENT_PHASE, state.currentPhase.name)
             .putInt(KEY_TOTAL_ELAPSED_BEFORE_RUN_SECONDS, state.totalElapsedBeforeRunSeconds)
             .putInt(KEY_PHASE_ELAPSED_BEFORE_RUN_SECONDS, state.phaseElapsedBeforeRunSeconds)
+            .putInt(KEY_FAST_PHASE_DURATION_SECONDS, state.fastPhaseDurationSeconds)
+            .putInt(KEY_SLOW_PHASE_DURATION_SECONDS, state.slowPhaseDurationSeconds)
             .putLong(KEY_RUN_STARTED_AT_ELAPSED_REALTIME, state.runStartedAtElapsedRealtime)
             .putLong(KEY_PHASE_STARTED_AT_ELAPSED_REALTIME, state.phaseStartedAtElapsedRealtime)
             .putLong(KEY_PERSISTED_AT_ELAPSED_REALTIME, state.persistedAtElapsedRealtime)

@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -36,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.goenc.dailymotiontimer.ui.theme.WorkoutFlowTimerTheme
+import kotlin.math.roundToInt
 
 class MainActivity : ComponentActivity() {
     private val viewModel: TimerViewModel by viewModels()
@@ -59,6 +61,8 @@ class MainActivity : ComponentActivity() {
                             }
                         },
                         onStopClick = viewModel::stop,
+                        onFastPhaseDurationChange = viewModel::updateFastPhaseDurationSeconds,
+                        onSlowPhaseDurationChange = viewModel::updateSlowPhaseDurationSeconds,
                     )
                 }
             }
@@ -72,6 +76,8 @@ private fun TimerScreen(
     modifier: Modifier = Modifier,
     onStartPauseClick: () -> Unit,
     onStopClick: () -> Unit,
+    onFastPhaseDurationChange: (Int) -> Unit,
+    onSlowPhaseDurationChange: (Int) -> Unit,
 ) {
     Column(
         modifier = modifier
@@ -96,6 +102,22 @@ private fun TimerScreen(
             text = stringResource(R.string.elapsed_time_label, uiState.formattedElapsedTime),
             style = MaterialTheme.typography.titleMedium,
         )
+        Spacer(modifier = Modifier.height(32.dp))
+        PhaseDurationSlider(
+            title = stringResource(R.string.fast_phase_duration_label),
+            selectedDurationLabel = uiState.formattedFastPhaseDuration,
+            selectedDurationSeconds = uiState.fastPhaseDurationSeconds,
+            enabled = !uiState.isActive,
+            onDurationChange = onFastPhaseDurationChange,
+        )
+        Spacer(modifier = Modifier.height(20.dp))
+        PhaseDurationSlider(
+            title = stringResource(R.string.slow_phase_duration_label),
+            selectedDurationLabel = uiState.formattedSlowPhaseDuration,
+            selectedDurationSeconds = uiState.slowPhaseDurationSeconds,
+            enabled = !uiState.isActive,
+            onDurationChange = onSlowPhaseDurationChange,
+        )
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -117,6 +139,42 @@ private fun TimerScreen(
                 Text(text = stringResource(R.string.stop))
             }
         }
+    }
+}
+
+@Composable
+private fun PhaseDurationSlider(
+    title: String,
+    selectedDurationLabel: String,
+    selectedDurationSeconds: Int,
+    enabled: Boolean,
+    onDurationChange: (Int) -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+        )
+        Text(
+            text = selectedDurationLabel,
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.padding(top = 4.dp),
+        )
+        Slider(
+            value = durationSliderIndex(selectedDurationSeconds).toFloat(),
+            onValueChange = { sliderValue ->
+                val optionIndex = sliderValue.roundToInt().coerceIn(
+                    0,
+                    PHASE_DURATION_OPTIONS_SECONDS.lastIndex,
+                )
+                onDurationChange(PHASE_DURATION_OPTIONS_SECONDS[optionIndex])
+            },
+            valueRange = 0f..PHASE_DURATION_OPTIONS_SECONDS.lastIndex.toFloat(),
+            steps = PHASE_DURATION_OPTIONS_SECONDS.size - 2,
+            enabled = enabled,
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 }
 
@@ -150,6 +208,13 @@ private fun TimerScreenPreview() {
             uiState = TimerUiState(),
             onStartPauseClick = {},
             onStopClick = {},
+            onFastPhaseDurationChange = {},
+            onSlowPhaseDurationChange = {},
         )
     }
+}
+
+private fun durationSliderIndex(durationSeconds: Int): Int {
+    return PHASE_DURATION_OPTIONS_SECONDS.indexOf(normalizePhaseDurationSeconds(durationSeconds))
+        .coerceAtLeast(0)
 }

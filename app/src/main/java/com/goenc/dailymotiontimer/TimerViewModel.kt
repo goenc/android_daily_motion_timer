@@ -22,4 +22,12 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     fun stop() {
         WalkingTimerController.stop(getApplication())
     }
+
+    fun updateFastPhaseDurationSeconds(durationSeconds: Int) {
+        WalkingTimerController.updateFastPhaseDurationSeconds(getApplication(), durationSeconds)
+    }
+
+    fun updateSlowPhaseDurationSeconds(durationSeconds: Int) {
+        WalkingTimerController.updateSlowPhaseDurationSeconds(getApplication(), durationSeconds)
+    }
 }
