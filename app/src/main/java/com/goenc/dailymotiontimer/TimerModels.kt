@@ -18,6 +18,7 @@ data class TimerUiState(
     val elapsedSeconds: Int = 0,
     val fastPhaseDurationSeconds: Int = DEFAULT_PHASE_DURATION_SECONDS,
     val slowPhaseDurationSeconds: Int = DEFAULT_PHASE_DURATION_SECONDS,
+    val isVibrationEnabled: Boolean = true,
     val isRunning: Boolean = false,
     val isPaused: Boolean = false,
 ) {
@@ -43,6 +44,7 @@ data class PersistedTimerState(
     val phaseElapsedBeforeRunMillis: Long,
     val fastPhaseDurationSeconds: Int,
     val slowPhaseDurationSeconds: Int,
+    val isVibrationEnabled: Boolean,
     val runStartedAtElapsedRealtime: Long,
     val phaseStartedAtElapsedRealtime: Long,
     val persistedAtElapsedRealtime: Long,
@@ -73,6 +75,7 @@ data class PersistedTimerState(
                 elapsedSeconds = elapsedSecondsFromMillis(totalElapsedBeforeRunMillis),
                 fastPhaseDurationSeconds = fastDuration,
                 slowPhaseDurationSeconds = slowDuration,
+                isVibrationEnabled = isVibrationEnabled,
                 isRunning = false,
                 isPaused = isPaused,
             )
@@ -105,6 +108,7 @@ data class PersistedTimerState(
                 elapsedSeconds = elapsedSecondsFromMillis(totalElapsedMillis),
                 fastPhaseDurationSeconds = fastDuration,
                 slowPhaseDurationSeconds = slowDuration,
+                isVibrationEnabled = isVibrationEnabled,
                 isRunning = true,
                 isPaused = false,
             )
@@ -139,6 +143,7 @@ data class PersistedTimerState(
                 ),
                 fastPhaseDurationSeconds = fastDuration,
                 slowPhaseDurationSeconds = slowDuration,
+                isVibrationEnabled = isVibrationEnabled,
                 isRunning = true,
                 isPaused = false,
             )
@@ -154,6 +159,7 @@ data class PersistedTimerState(
             elapsedSeconds = notificationElapsedSeconds,
             fastPhaseDurationSeconds = fastDuration,
             slowPhaseDurationSeconds = slowDuration,
+            isVibrationEnabled = isVibrationEnabled,
             isRunning = notificationIsRunning,
             isPaused = notificationIsPaused,
         )
@@ -331,6 +337,7 @@ internal fun TimerUiState.toPersistedState(
         ),
         fastPhaseDurationSeconds = normalizedFastDuration,
         slowPhaseDurationSeconds = normalizedSlowDuration,
+        isVibrationEnabled = isVibrationEnabled,
         runStartedAtElapsedRealtime = if (isRunning) nowElapsedRealtime else 0L,
         phaseStartedAtElapsedRealtime = if (isRunning) nowElapsedRealtime else 0L,
         persistedAtElapsedRealtime = nowElapsedRealtime,

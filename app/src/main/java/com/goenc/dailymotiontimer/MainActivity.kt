@@ -22,6 +22,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -63,6 +64,7 @@ class MainActivity : ComponentActivity() {
                         onStopClick = viewModel::stop,
                         onFastPhaseDurationChange = viewModel::updateFastPhaseDurationSeconds,
                         onSlowPhaseDurationChange = viewModel::updateSlowPhaseDurationSeconds,
+                        onVibrationEnabledChange = viewModel::updateVibrationEnabled,
                     )
                 }
             }
@@ -78,6 +80,7 @@ private fun TimerScreen(
     onStopClick: () -> Unit,
     onFastPhaseDurationChange: (Int) -> Unit,
     onSlowPhaseDurationChange: (Int) -> Unit,
+    onVibrationEnabledChange: (Boolean) -> Unit,
 ) {
     Column(
         modifier = modifier
@@ -118,6 +121,37 @@ private fun TimerScreen(
             enabled = !uiState.isActive,
             onDurationChange = onSlowPhaseDurationChange,
         )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 20.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column {
+                Text(
+                    text = stringResource(R.string.vibration_enabled_label),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    text = stringResource(
+                        if (uiState.isVibrationEnabled) {
+                            R.string.setting_on
+                        } else {
+                            R.string.setting_off
+                        },
+                    ),
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
+            Switch(
+                checked = uiState.isVibrationEnabled,
+                onCheckedChange = onVibrationEnabledChange,
+                enabled = !uiState.isActive,
+            )
+        }
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -210,6 +244,7 @@ private fun TimerScreenPreview() {
             onStopClick = {},
             onFastPhaseDurationChange = {},
             onSlowPhaseDurationChange = {},
+            onVibrationEnabledChange = {},
         )
     }
 }

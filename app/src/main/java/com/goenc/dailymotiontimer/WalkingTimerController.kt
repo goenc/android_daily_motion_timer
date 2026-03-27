@@ -77,6 +77,23 @@ object WalkingTimerController {
         )
     }
 
+    fun updateVibrationEnabled(context: Context, isEnabled: Boolean) {
+        val currentState = _uiState.value
+        if (currentState.isActive) {
+            return
+        }
+
+        val updatedState = currentState.copy(isVibrationEnabled = isEnabled)
+        publishState(updatedState)
+        WalkingTimerStateStore.save(
+            context.applicationContext,
+            updatedState.toPersistedState(
+                nowElapsedRealtime = SystemClock.elapsedRealtime(),
+                nowWallClockMillis = System.currentTimeMillis(),
+            ),
+        )
+    }
+
     internal fun publishState(state: TimerUiState) {
         _uiState.value = state
     }
@@ -97,6 +114,7 @@ object WalkingTimerController {
             elapsedSeconds = 0,
             fastPhaseDurationSeconds = normalizePhaseDurationSeconds(fastPhaseDurationSeconds),
             slowPhaseDurationSeconds = normalizePhaseDurationSeconds(slowPhaseDurationSeconds),
+            isVibrationEnabled = currentState.isVibrationEnabled,
             isRunning = false,
             isPaused = false,
         )

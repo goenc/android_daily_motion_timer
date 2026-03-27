@@ -42,6 +42,7 @@ class WalkingTimerService : Service() {
     private var phaseElapsedBeforeRunMillis = 0L
     private var fastPhaseDurationSeconds = DEFAULT_PHASE_DURATION_SECONDS
     private var slowPhaseDurationSeconds = DEFAULT_PHASE_DURATION_SECONDS
+    private var isVibrationEnabled = true
     private var runStartedAtElapsedRealtime = 0L
     private var phaseStartedAtElapsedRealtime = 0L
     private var isRunning = false
@@ -201,6 +202,7 @@ class WalkingTimerService : Service() {
                     elapsedSeconds = elapsedSecondsFromMillis(totalElapsedBeforeRunMillis),
                     fastPhaseDurationSeconds = fastPhaseDurationSeconds,
                     slowPhaseDurationSeconds = slowPhaseDurationSeconds,
+                    isVibrationEnabled = isVibrationEnabled,
                     isRunning = false,
                     isPaused = isPaused,
                 ),
@@ -231,6 +233,7 @@ class WalkingTimerService : Service() {
                 elapsedSeconds = elapsedSecondsFromMillis(totalElapsedMillis),
                 fastPhaseDurationSeconds = fastPhaseDurationSeconds,
                 slowPhaseDurationSeconds = slowPhaseDurationSeconds,
+                isVibrationEnabled = isVibrationEnabled,
                 isRunning = true,
                 isPaused = false,
             ),
@@ -254,7 +257,9 @@ class WalkingTimerService : Service() {
 
     private fun announcePhaseTransition(phase: WalkingPhase) {
         phaseAudioPlayer.play(phase)
-        vibrateSafely()
+        if (isVibrationEnabled) {
+            vibrateSafely()
+        }
     }
 
     private fun announcePendingRestoredPhaseTransition() {
@@ -397,6 +402,7 @@ class WalkingTimerService : Service() {
 
         fastPhaseDurationSeconds = restoredState.fastPhaseDurationSeconds
         slowPhaseDurationSeconds = restoredState.slowPhaseDurationSeconds
+        isVibrationEnabled = restoredState.isVibrationEnabled
         isRunning = restoredState.isRunning
         isPaused = restoredState.isPaused
         pendingRestoredAnnouncementPhase =
@@ -449,6 +455,7 @@ class WalkingTimerService : Service() {
         val persistedState = WalkingTimerStateStore.load(this) ?: return
         fastPhaseDurationSeconds = persistedState.fastPhaseDurationSeconds
         slowPhaseDurationSeconds = persistedState.slowPhaseDurationSeconds
+        isVibrationEnabled = persistedState.isVibrationEnabled
     }
 
     private fun persistState(state: TimerUiState) {
@@ -462,6 +469,7 @@ class WalkingTimerService : Service() {
                 phaseElapsedBeforeRunMillis = phaseElapsedBeforeRunMillis,
                 fastPhaseDurationSeconds = fastPhaseDurationSeconds,
                 slowPhaseDurationSeconds = slowPhaseDurationSeconds,
+                isVibrationEnabled = isVibrationEnabled,
                 runStartedAtElapsedRealtime = if (isRunning) runStartedAtElapsedRealtime else 0L,
                 phaseStartedAtElapsedRealtime = if (isRunning) phaseStartedAtElapsedRealtime else 0L,
                 persistedAtElapsedRealtime = nowElapsedRealtime,
@@ -490,6 +498,7 @@ class WalkingTimerService : Service() {
         phaseElapsedBeforeRunMillis = 0L
         runStartedAtElapsedRealtime = 0L
         phaseStartedAtElapsedRealtime = 0L
+        isVibrationEnabled = WalkingTimerStateStore.load(this)?.isVibrationEnabled ?: true
         isRunning = false
         isPaused = false
         pendingRestoredAnnouncementPhase = null

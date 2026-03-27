@@ -1,8 +1,7 @@
-固定音声によるフェーズ切替通知へ変更
+バイブ通知設定の保存切替追加
 
-・WalkingTimerService の TTS 経路を MediaPlayer と AudioFocusRequest を使う固定音声再生へ置換
-・フェーズ復帰時の通知取りこぼし補完と停止時の再生解放を追加
-・res/raw に fast_phase.mp3 と slow_phase.mp3 を追加
-・JAVA_HOME を明示した assembleDebug 成功
-・実機で前面 最小化 画面オフ 状態復帰時の AudioFocus 発火を確認
-・実機のロック画面制約により 一時停止 再開 停止の UI 経由操作確認は未完了
+・開始前のみ変更可能なバイブ通知 ON OFF 設定を画面へ追加
+・バイブ設定を UI 状態と永続状態に保持し停止後と復帰後も維持するよう対応
+・フェーズ切替時は設定 ON の場合のみバイブ実行に分岐
+・GitHub の work 先頭とローカル HEAD 一致を確認
+・JAVA_HOME を補って assembleDebug 成功を確認

@@ -7,6 +7,9 @@
     <string name="elapsed_time_label">累計経過時間 %1$s</string>
     <string name="fast_phase_duration_label">早く歩く時間</string>
     <string name="slow_phase_duration_label">ゆっくり歩く時間</string>
+    <string name="vibration_enabled_label">バイブ通知</string>
+    <string name="setting_on">ON</string>
+    <string name="setting_off">OFF</string>
     <string name="notification_status">残り %1$s / 累計 %2$s</string>
     <string name="timer_notification_channel_name">歩行タイマー</string>
     <string name="timer_notification_channel_description">歩行タイマーの進行状況を表示します</string>

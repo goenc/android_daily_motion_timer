@@ -30,4 +30,8 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     fun updateSlowPhaseDurationSeconds(durationSeconds: Int) {
         WalkingTimerController.updateSlowPhaseDurationSeconds(getApplication(), durationSeconds)
     }
+
+    fun updateVibrationEnabled(isEnabled: Boolean) {
+        WalkingTimerController.updateVibrationEnabled(getApplication(), isEnabled)
+    }
 }
