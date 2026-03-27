@@ -1,0 +1,1 @@
+- 共通方針はC:\Users\gonec\GameProjects\Godot\AGENTS\AGENTS.md を参照する
