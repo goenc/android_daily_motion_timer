@@ -106,6 +106,8 @@ private fun TimerScreen(
                 Text(
                     text = if (uiState.isRunning) {
                         stringResource(R.string.pause)
+                    } else if (uiState.isPaused) {
+                        stringResource(R.string.resume)
                     } else {
                         stringResource(R.string.start)
                     },

@@ -2,6 +2,7 @@
     <string name="app_name">Workout Flow Timer</string>
     <string name="start">開始</string>
     <string name="pause">一時停止</string>
+    <string name="resume">再開</string>
     <string name="stop">停止</string>
     <string name="elapsed_time_label">累計経過時間 %1$s</string>
     <string name="notification_status">残り %1$s / 累計 %2$s</string>

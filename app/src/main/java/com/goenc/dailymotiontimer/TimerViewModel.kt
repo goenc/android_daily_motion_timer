@@ -7,6 +7,10 @@ import kotlinx.coroutines.flow.StateFlow
 class TimerViewModel(application: Application) : AndroidViewModel(application) {
     val uiState: StateFlow<TimerUiState> = WalkingTimerController.uiState
 
+    init {
+        WalkingTimerController.restoreState(getApplication())
+    }
+
     fun startOrResume() {
         WalkingTimerController.startOrResume(getApplication())
     }
