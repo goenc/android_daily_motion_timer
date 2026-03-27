@@ -1,50 +1,51 @@
 package com.goenc.dailymotiontimer
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
-import android.speech.tts.TextToSpeech
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.lifecycleScope
-import androidx.lifecycle.repeatOnLifecycle
+import androidx.core.content.ContextCompat
 import com.goenc.dailymotiontimer.ui.theme.WorkoutFlowTimerTheme
-import java.util.Locale
-import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private val viewModel: TimerViewModel by viewModels()
 
-    private var textToSpeech: TextToSpeech? = null
-    private var isTextToSpeechReady = false
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        initializeTextToSpeech()
-        observeSpeechEvents()
         setContent {
             WorkoutFlowTimerTheme {
+                NotificationPermissionEffect()
                 val uiState by viewModel.uiState.collectAsState()
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     TimerScreen(
@@ -61,46 +62,6 @@ class MainActivity : ComponentActivity() {
                     )
                 }
             }
-        }
-    }
-
-    override fun onDestroy() {
-        textToSpeech?.stop()
-        textToSpeech?.shutdown()
-        textToSpeech = null
-        isTextToSpeechReady = false
-        super.onDestroy()
-    }
-
-    private fun initializeTextToSpeech() {
-        textToSpeech = TextToSpeech(this) { status ->
-            if (status != TextToSpeech.SUCCESS) {
-                isTextToSpeechReady = false
-                return@TextToSpeech
-            }
-            val result = textToSpeech?.setLanguage(Locale.JAPANESE)
-            isTextToSpeechReady = result != TextToSpeech.LANG_MISSING_DATA &&
-                result != TextToSpeech.LANG_NOT_SUPPORTED
-        }
-    }
-
-    private fun observeSpeechEvents() {
-        lifecycleScope.launch {
-            repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
-                viewModel.speechEvents.collect { message ->
-                    speakSafely(message)
-                }
-            }
-        }
-    }
-
-    private fun speakSafely(message: String) {
-        val tts = textToSpeech ?: return
-        if (!isTextToSpeechReady) {
-            return
-        }
-        runCatching {
-            tts.speak(message, TextToSpeech.QUEUE_FLUSH, null, "walking-phase")
         }
     }
 }
@@ -130,6 +91,11 @@ private fun TimerScreen(
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(top = 16.dp),
         )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = stringResource(R.string.elapsed_time_label, uiState.formattedElapsedTime),
+            style = MaterialTheme.typography.titleMedium,
+        )
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -148,6 +114,28 @@ private fun TimerScreen(
             Button(onClick = onStopClick) {
                 Text(text = stringResource(R.string.stop))
             }
+        }
+    }
+}
+
+@Composable
+private fun NotificationPermissionEffect() {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+        return
+    }
+
+    val context = LocalContext.current
+    val launcher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+    ) { }
+
+    LaunchedEffect(Unit) {
+        val granted = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.POST_NOTIFICATIONS,
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!granted) {
+            launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
 }
