@@ -13,7 +13,7 @@ import android.os.SystemClock
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
-import android.speech.tts.TextToSpeech
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import kotlinx.coroutines.CoroutineScope
@@ -24,7 +24,6 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import java.util.Locale
 
 class WalkingTimerService : Service() {
     private data class PreciseTimerSnapshot(
@@ -36,8 +35,7 @@ class WalkingTimerService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private var tickerJob: Job? = null
-    private var textToSpeech: TextToSpeech? = null
-    private var isTextToSpeechReady = false
+    private lateinit var phaseAudioPlayer: PhaseAudioPlayer
 
     private var currentPhase = WalkingPhase.Fast
     private var totalElapsedBeforeRunMillis = 0L
@@ -50,11 +48,12 @@ class WalkingTimerService : Service() {
     private var isPaused = false
     private var hasForegroundNotification = false
     private var lastObservedPhase = WalkingPhase.Fast
+    private var pendingRestoredAnnouncementPhase: WalkingPhase? = null
 
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
-        initializeTextToSpeech()
+        phaseAudioPlayer = PhaseAudioPlayer(applicationContext)
         val initialState = restorePersistedState() ?: TimerUiState()
         lastObservedPhase = initialState.currentPhase
         publishState(initialState)
@@ -79,10 +78,7 @@ class WalkingTimerService : Service() {
         if (currentUiState().isActive) {
             persistState(currentUiState())
         }
-        textToSpeech?.stop()
-        textToSpeech?.shutdown()
-        textToSpeech = null
-        isTextToSpeechReady = false
+        phaseAudioPlayer.stop()
         serviceScope.cancel()
         super.onDestroy()
     }
@@ -154,6 +150,8 @@ class WalkingTimerService : Service() {
     private fun stopTimer() {
         tickerJob?.cancel()
         tickerJob = null
+        pendingRestoredAnnouncementPhase = null
+        phaseAudioPlayer.stop()
         resetTimerProgressState()
         val stoppedState = currentUiState()
         persistState(stoppedState)
@@ -254,32 +252,16 @@ class WalkingTimerService : Service() {
         WalkingTimerController.publishState(state)
     }
 
-    private fun initializeTextToSpeech() {
-        textToSpeech = TextToSpeech(applicationContext) { status ->
-            if (status != TextToSpeech.SUCCESS) {
-                isTextToSpeechReady = false
-                return@TextToSpeech
-            }
-
-            val result = textToSpeech?.setLanguage(Locale.JAPANESE)
-            isTextToSpeechReady = result != TextToSpeech.LANG_MISSING_DATA &&
-                result != TextToSpeech.LANG_NOT_SUPPORTED
-        }
-    }
-
-    private fun speakSafely(message: String) {
-        val tts = textToSpeech ?: return
-        if (!isTextToSpeechReady) {
-            return
-        }
-        runCatching {
-            tts.speak(message, TextToSpeech.QUEUE_FLUSH, null, "walking-phase")
-        }
-    }
-
     private fun announcePhaseTransition(phase: WalkingPhase) {
-        speakSafely(phase.announcement)
+        phaseAudioPlayer.play(phase)
         vibrateSafely()
+    }
+
+    private fun announcePendingRestoredPhaseTransition() {
+        val phase = pendingRestoredAnnouncementPhase ?: return
+        pendingRestoredAnnouncementPhase = null
+        Log.i(TAG, "Announcing restored phase transition for ${phase.name}")
+        announcePhaseTransition(phase)
     }
 
     private fun vibrateSafely() {
@@ -396,6 +378,7 @@ class WalkingTimerService : Service() {
 
         publishAndPersistState(restoredState)
         if (restoredState.isRunning) {
+            announcePendingRestoredPhaseTransition()
             startTicker()
         } else {
             tickerJob?.cancel()
@@ -416,6 +399,12 @@ class WalkingTimerService : Service() {
         slowPhaseDurationSeconds = restoredState.slowPhaseDurationSeconds
         isRunning = restoredState.isRunning
         isPaused = restoredState.isPaused
+        pendingRestoredAnnouncementPhase =
+            if (restoredState.isRunning && persistedState.notificationPhase != restoredState.currentPhase) {
+                restoredState.currentPhase
+            } else {
+                null
+            }
         lastObservedPhase = restoredState.currentPhase
 
         val canReuseStoredRealtimeBase =
@@ -503,6 +492,7 @@ class WalkingTimerService : Service() {
         phaseStartedAtElapsedRealtime = 0L
         isRunning = false
         isPaused = false
+        pendingRestoredAnnouncementPhase = null
         lastObservedPhase = WalkingPhase.Fast
     }
 
@@ -535,6 +525,7 @@ class WalkingTimerService : Service() {
         private const val REQUEST_CODE_PAUSE = 1
         private const val REQUEST_CODE_RESUME = 2
         private const val REQUEST_CODE_STOP = 3
+        private const val TAG = "WalkingTimerService"
 
         fun createIntent(context: Context, action: String): Intent {
             return Intent(context, WalkingTimerService::class.java).apply {

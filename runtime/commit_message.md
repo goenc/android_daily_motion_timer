@@ -1,8 +1,8 @@
-タイマー進行基準時刻と保存復帰の精度修正
+固定音声によるフェーズ切替通知へ変更
 
-・タイマー内部進行をミリ秒基準へ変更し表示時のみ秒へ変換
-・実行中保存で開始基準時刻を保存時刻へ潰さないようサービス側で永続化組み立てへ変更
-・状態保存へミリ秒値を追加し既存秒保存からの読込互換を維持
-・短時間設定と復帰計算を固定する unit test を追加
-・testDebugUnitTest を実行
-・assembleDebug を実行
+・WalkingTimerService の TTS 経路を MediaPlayer と AudioFocusRequest を使う固定音声再生へ置換
+・フェーズ復帰時の通知取りこぼし補完と停止時の再生解放を追加
+・res/raw に fast_phase.mp3 と slow_phase.mp3 を追加
+・JAVA_HOME を明示した assembleDebug 成功
+・実機で前面 最小化 画面オフ 状態復帰時の AudioFocus 発火を確認
+・実機のロック画面制約により 一時停止 再開 停止の UI 経由操作確認は未完了
