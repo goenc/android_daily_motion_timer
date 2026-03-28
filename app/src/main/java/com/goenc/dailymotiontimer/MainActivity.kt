@@ -68,6 +68,7 @@ class MainActivity : ComponentActivity() {
                         onStopClick = viewModel::stop,
                         onFastPhaseDurationChange = viewModel::updateFastPhaseDurationSeconds,
                         onSlowPhaseDurationChange = viewModel::updateSlowPhaseDurationSeconds,
+                        onAnnouncementVolumeChange = viewModel::updateAnnouncementVolume,
                         onVibrationEnabledChange = viewModel::updateVibrationEnabled,
                     )
                 }
@@ -99,6 +100,7 @@ private fun TimerScreen(
     onStopClick: () -> Unit,
     onFastPhaseDurationChange: (Int) -> Unit,
     onSlowPhaseDurationChange: (Int) -> Unit,
+    onAnnouncementVolumeChange: (Float) -> Unit,
     onVibrationEnabledChange: (Boolean) -> Unit,
 ) {
     Column(
@@ -139,6 +141,12 @@ private fun TimerScreen(
             selectedDurationSeconds = uiState.slowPhaseDurationSeconds,
             enabled = !uiState.isActive,
             onDurationChange = onSlowPhaseDurationChange,
+        )
+        Spacer(modifier = Modifier.height(20.dp))
+        AnnouncementVolumeSlider(
+            title = stringResource(R.string.announcement_volume_label),
+            announcementVolume = uiState.announcementVolume,
+            onVolumeChange = onAnnouncementVolumeChange,
         )
         Row(
             modifier = Modifier
@@ -192,6 +200,38 @@ private fun TimerScreen(
                 Text(text = stringResource(R.string.stop))
             }
         }
+    }
+}
+
+@Composable
+private fun AnnouncementVolumeSlider(
+    title: String,
+    announcementVolume: Float,
+    onVolumeChange: (Float) -> Unit,
+) {
+    val normalizedAnnouncementVolume = normalizeAnnouncementVolume(announcementVolume)
+    val volumePercent = (normalizedAnnouncementVolume * 100f).roundToInt()
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+        )
+        Text(
+            text = stringResource(R.string.announcement_volume_value, volumePercent),
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.padding(top = 4.dp),
+        )
+        Slider(
+            value = volumePercent.toFloat(),
+            onValueChange = { sliderValue ->
+                val clampedPercent = sliderValue.roundToInt().coerceIn(0, 100)
+                onVolumeChange(clampedPercent / 100f)
+            },
+            valueRange = 0f..100f,
+            steps = 99,
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 }
 
@@ -263,6 +303,7 @@ private fun TimerScreenPreview() {
             onStopClick = {},
             onFastPhaseDurationChange = {},
             onSlowPhaseDurationChange = {},
+            onAnnouncementVolumeChange = {},
             onVibrationEnabledChange = {},
         )
     }

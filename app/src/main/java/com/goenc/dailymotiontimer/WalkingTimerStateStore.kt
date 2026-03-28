@@ -14,6 +14,7 @@ internal object WalkingTimerStateStore {
     private const val KEY_START_PHASE = "start_phase"
     private const val KEY_IS_RUNNING = "is_running"
     private const val KEY_IS_PAUSED = "is_paused"
+    private const val KEY_ANNOUNCEMENT_VOLUME = "announcement_volume"
     private const val KEY_IS_VIBRATION_ENABLED = "is_vibration_enabled"
 
     private const val LEGACY_KEY_CURRENT_PHASE = "current_phase"
@@ -53,6 +54,7 @@ internal object WalkingTimerStateStore {
                 startPhase = prefs.readPhase(KEY_START_PHASE, WalkingPhase.Fast),
                 isRunning = prefs.getBoolean(KEY_IS_RUNNING, false),
                 isPaused = prefs.getBoolean(KEY_IS_PAUSED, false),
+                announcementVolume = prefs.getFloat(KEY_ANNOUNCEMENT_VOLUME, DEFAULT_ANNOUNCEMENT_VOLUME),
                 isVibrationEnabled = prefs.getBoolean(KEY_IS_VIBRATION_ENABLED, true),
             )
         }
@@ -89,6 +91,7 @@ internal object WalkingTimerStateStore {
             .putString(KEY_START_PHASE, state.startPhase.name)
             .putBoolean(KEY_IS_RUNNING, state.isRunning)
             .putBoolean(KEY_IS_PAUSED, state.isPaused)
+            .putFloat(KEY_ANNOUNCEMENT_VOLUME, normalizeAnnouncementVolume(state.announcementVolume))
             .putBoolean(KEY_IS_VIBRATION_ENABLED, state.isVibrationEnabled)
             .remove(LEGACY_KEY_CURRENT_PHASE)
             .remove(LEGACY_KEY_TOTAL_ELAPSED_BEFORE_RUN_SECONDS)
@@ -175,6 +178,7 @@ internal object WalkingTimerStateStore {
             startPhase = WalkingPhase.Fast,
             isRunning = isRunning && hasSession,
             isPaused = isPaused && hasSession,
+            announcementVolume = DEFAULT_ANNOUNCEMENT_VOLUME,
             isVibrationEnabled = prefs.getBoolean(KEY_IS_VIBRATION_ENABLED, true),
         )
     }

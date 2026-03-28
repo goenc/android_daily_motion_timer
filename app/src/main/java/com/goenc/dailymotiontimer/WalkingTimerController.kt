@@ -88,6 +88,28 @@ object WalkingTimerController {
         )
     }
 
+    fun updateAnnouncementVolume(context: Context, volume: Float) {
+        val currentState = _uiState.value
+        val normalizedVolume = normalizeAnnouncementVolume(volume)
+        val updatedState = currentState.copy(announcementVolume = normalizedVolume)
+        publishState(updatedState)
+        WalkingTimerStateStore.save(
+            context.applicationContext,
+            updatedState.toPersistedState(),
+        )
+
+        if (!currentState.isActive) {
+            return
+        }
+
+        context.applicationContext.startService(
+            WalkingTimerService.createAnnouncementVolumeIntent(
+                context = context.applicationContext,
+                announcementVolume = normalizedVolume,
+            ),
+        )
+    }
+
     internal fun publishState(state: TimerUiState) {
         _uiState.value = state
     }
@@ -108,6 +130,7 @@ object WalkingTimerController {
             elapsedSeconds = 0,
             fastPhaseDurationSeconds = normalizePhaseDurationSeconds(fastPhaseDurationSeconds),
             slowPhaseDurationSeconds = normalizePhaseDurationSeconds(slowPhaseDurationSeconds),
+            announcementVolume = currentState.announcementVolume,
             isVibrationEnabled = currentState.isVibrationEnabled,
             isRunning = false,
             isPaused = false,

@@ -47,10 +47,9 @@ internal class PhaseAudioPlayer(context: Context) {
     private var audioFocusRequest: AudioFocusRequest? = null
     private var isFastLoaded = false
     private var isSlowLoaded = false
+    private var announcementVolume = DEFAULT_ANNOUNCEMENT_VOLUME
     private var currentStreamId = 0
     private var pendingPhase: WalkingPhase? = null
-    private var pendingPlaybackRetryRunnable: Runnable? = null
-    private var pendingPlaybackRetryCount = 0
     private var pendingPlaybackCompleteRunnable: Runnable? = null
     private var hasAudioFocus = false
     @Volatile
@@ -71,13 +70,23 @@ internal class PhaseAudioPlayer(context: Context) {
         audioHandler.post {
             Log.i(TAG, "Received ${phase.name} cue playback request")
             pendingPhase = phase
-            pendingPlaybackRetryCount = 0
-            cancelPendingPlaybackRetryLocked()
             stopCurrentStreamLocked(
                 reason = "replace with ${phase.name}",
                 shouldAbandonAudioFocus = false,
             )
             startPendingPlayback()
+        }
+    }
+
+    fun setAnnouncementVolume(volume: Float) {
+        if (isReleased) {
+            return
+        }
+        audioHandler.post {
+            announcementVolume = normalizeAnnouncementVolume(volume)
+            if (currentStreamId != 0) {
+                soundPool.setVolume(currentStreamId, announcementVolume, announcementVolume)
+            }
         }
     }
 
@@ -150,62 +159,32 @@ internal class PhaseAudioPlayer(context: Context) {
             return
         }
 
-        cancelPendingPlaybackRetryLocked()
         val focusResult = requestAudioFocus()
         if (focusResult != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
-            schedulePendingPlaybackRetryLocked(phase, focusResult)
+            Log.w(TAG, "Skipping ${phase.name} cue because audio focus request failed result=$focusResult")
+            pendingPhase = null
             return
         }
 
-        val streamId = soundPool.play(phase.soundId(), 1f, 1f, 1, 0, 1f)
+        val streamId =
+            soundPool.play(
+                phase.soundId(),
+                announcementVolume,
+                announcementVolume,
+                1,
+                0,
+                1f,
+            )
         if (streamId == 0) {
             Log.w(TAG, "Failed to start ${phase.name} cue playback")
-            schedulePendingPlaybackRetryLocked(phase, SOUND_POOL_PLAY_FAILED)
+            pendingPhase = null
+            abandonAudioFocus()
             return
         }
 
         currentStreamId = streamId
-        pendingPlaybackRetryCount = 0
         Log.i(TAG, "Started ${phase.name} cue playback streamId=$streamId")
         schedulePlaybackCompletionLocked(phase, streamId)
-    }
-
-    private fun schedulePendingPlaybackRetryLocked(phase: WalkingPhase, result: Int) {
-        if (pendingPhase != phase || isReleased) {
-            return
-        }
-
-        if (pendingPlaybackRetryCount >= MAX_PENDING_PLAYBACK_RETRY_COUNT) {
-            Log.w(
-                TAG,
-                "Stopping retry for ${phase.name} cue after $pendingPlaybackRetryCount attempts result=$result",
-            )
-            pendingPhase = null
-            pendingPlaybackRetryCount = 0
-            cancelPendingPlaybackRetryLocked()
-            if (currentStreamId == 0) {
-                abandonAudioFocus()
-            }
-            return
-        }
-
-        pendingPlaybackRetryCount += 1
-        Log.i(
-            TAG,
-            "Starting retry wait for ${phase.name} cue result=$result attempt=$pendingPlaybackRetryCount",
-        )
-        val retryRunnable = Runnable {
-            if (pendingPhase != phase || isReleased) {
-                pendingPlaybackRetryRunnable = null
-                Log.i(TAG, "Stopping retry because ${phase.name} cue is no longer pending")
-                return@Runnable
-            }
-            pendingPlaybackRetryRunnable = null
-            Log.i(TAG, "Retrying ${phase.name} cue playback attempt=$pendingPlaybackRetryCount")
-            startPendingPlayback()
-        }
-        pendingPlaybackRetryRunnable = retryRunnable
-        audioHandler.postDelayed(retryRunnable, PENDING_PLAYBACK_RETRY_INTERVAL_MILLIS)
     }
 
     private fun schedulePlaybackCompletionLocked(phase: WalkingPhase, streamId: Int) {
@@ -244,7 +223,6 @@ internal class PhaseAudioPlayer(context: Context) {
                     audioFocusRequest
                         ?: AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
                             .setAudioAttributes(audioAttributes)
-                            .setAcceptsDelayedFocusGain(true)
                             .setWillPauseWhenDucked(true)
                             .setOnAudioFocusChangeListener(focusChangeListener)
                             .build()
@@ -279,8 +257,6 @@ internal class PhaseAudioPlayer(context: Context) {
                 hasAudioFocus = true
                 Log.i(TAG, "Audio focus regained")
                 if (pendingPhase != null && currentStreamId == 0) {
-                    pendingPlaybackRetryCount = 0
-                    cancelPendingPlaybackRetryLocked()
                     startPendingPlayback()
                 }
             }
@@ -289,7 +265,6 @@ internal class PhaseAudioPlayer(context: Context) {
             AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK,
             -> {
                 hasAudioFocus = false
-                cancelPendingPlaybackRetryLocked()
                 Log.w(
                     TAG,
                     "Audio focus lost transiently change=$focusChange pending=${pendingPhase?.name ?: "none"}",
@@ -302,7 +277,6 @@ internal class PhaseAudioPlayer(context: Context) {
 
             AudioManager.AUDIOFOCUS_LOSS -> {
                 hasAudioFocus = false
-                cancelPendingPlaybackRetryLocked()
                 Log.w(
                     TAG,
                     "Audio focus lost permanently pending=${pendingPhase?.name ?: "none"}",
@@ -312,15 +286,9 @@ internal class PhaseAudioPlayer(context: Context) {
                     shouldAbandonAudioFocus = false,
                 )
                 pendingPhase = null
-                pendingPlaybackRetryCount = 0
                 abandonAudioFocus()
             }
         }
-    }
-
-    private fun cancelPendingPlaybackRetryLocked() {
-        pendingPlaybackRetryRunnable?.let { audioHandler.removeCallbacks(it) }
-        pendingPlaybackRetryRunnable = null
     }
 
     private fun cancelPendingPlaybackCompleteLocked() {
@@ -347,8 +315,6 @@ internal class PhaseAudioPlayer(context: Context) {
     private fun stopInternal(reason: String) {
         val phase = pendingPhase
         pendingPhase = null
-        pendingPlaybackRetryCount = 0
-        cancelPendingPlaybackRetryLocked()
         stopCurrentStreamLocked(reason = reason, shouldAbandonAudioFocus = false)
         Log.i(TAG, "Stopped cue processing phase=${phase?.name ?: "none"} reason=$reason")
         abandonAudioFocus()
@@ -425,10 +391,7 @@ internal class PhaseAudioPlayer(context: Context) {
 
     private companion object {
         private const val TAG = "PhaseAudioPlayer"
-        private const val MAX_PENDING_PLAYBACK_RETRY_COUNT = 10
-        private const val PENDING_PLAYBACK_RETRY_INTERVAL_MILLIS = 300L
         private const val DEFAULT_PLAYBACK_CLEANUP_DELAY_MILLIS = 1500L
         private const val PLAYBACK_CLEANUP_GRACE_MILLIS = 200L
-        private const val SOUND_POOL_PLAY_FAILED = -1000
     }
 }

@@ -34,4 +34,8 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     fun updateVibrationEnabled(isEnabled: Boolean) {
         WalkingTimerController.updateVibrationEnabled(getApplication(), isEnabled)
     }
+
+    fun updateAnnouncementVolume(volume: Float) {
+        WalkingTimerController.updateAnnouncementVolume(getApplication(), volume)
+    }
 }

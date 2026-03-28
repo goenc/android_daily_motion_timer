@@ -40,6 +40,7 @@ class WalkingTimerService : Service() {
     private var fastDurationMillis = durationMillisFromSeconds(DEFAULT_PHASE_DURATION_SECONDS)
     private var slowDurationMillis = durationMillisFromSeconds(DEFAULT_PHASE_DURATION_SECONDS)
     private var startPhase = WalkingPhase.Fast
+    private var announcementVolume = DEFAULT_ANNOUNCEMENT_VOLUME
     private var isVibrationEnabled = true
     private var isRunning = false
     private var isPaused = false
@@ -68,6 +69,7 @@ class WalkingTimerService : Service() {
                 stopTimer()
                 null
             }
+            ACTION_UPDATE_ANNOUNCEMENT_VOLUME -> updateAnnouncementVolume(intent)
             ACTION_RESTORE, null -> restoreActiveSession()
             else -> currentUiState()
         }
@@ -235,6 +237,8 @@ class WalkingTimerService : Service() {
     }
 
     private fun announcePhaseTransition(phase: WalkingPhase) {
+        val currentAnnouncementVolume = synchronized(stateLock) { announcementVolume }
+        phaseAudioPlayer.setAnnouncementVolume(currentAnnouncementVolume)
         phaseAudioPlayer.play(phase)
         if (!isVibrationEnabled()) {
             return
@@ -392,19 +396,24 @@ class WalkingTimerService : Service() {
             startPhase = persistedState.startPhase
             isRunning = persistedState.isRunning
             isPaused = persistedState.isPaused
+            announcementVolume = persistedState.announcementVolume
             isVibrationEnabled = persistedState.isVibrationEnabled
         }
+        phaseAudioPlayer.setAnnouncementVolume(persistedState.announcementVolume)
 
         return persistedState.toUiState(nowElapsedRealtime)
     }
 
     private fun restoreConfiguredPhaseDurations() {
         val persistedState = WalkingTimerStateStore.load(this) ?: return
+        val restoredAnnouncementVolume = normalizeAnnouncementVolume(persistedState.announcementVolume)
         synchronized(stateLock) {
             fastDurationMillis = persistedState.fastDurationMillis
             slowDurationMillis = persistedState.slowDurationMillis
+            announcementVolume = restoredAnnouncementVolume
             isVibrationEnabled = persistedState.isVibrationEnabled
         }
+        phaseAudioPlayer.setAnnouncementVolume(restoredAnnouncementVolume)
     }
 
     private fun persistState() {
@@ -419,6 +428,7 @@ class WalkingTimerService : Service() {
                 startPhase = startPhase,
                 isRunning = isRunning,
                 isPaused = isPaused,
+                announcementVolume = announcementVolume,
                 isVibrationEnabled = isVibrationEnabled,
             )
         }
@@ -434,6 +444,7 @@ class WalkingTimerService : Service() {
         return TimerUiState(
             fastPhaseDurationSeconds = durationSecondsFromMillis(fastDurationMillis),
             slowPhaseDurationSeconds = durationSecondsFromMillis(slowDurationMillis),
+            announcementVolume = announcementVolume,
             isVibrationEnabled = isVibrationEnabled,
             isRunning = isRunning,
             isPaused = isPaused,
@@ -540,6 +551,20 @@ class WalkingTimerService : Service() {
         }
     }
 
+    private fun updateAnnouncementVolume(intent: Intent?): TimerUiState {
+        val requestedVolume = intent?.getFloatExtra(EXTRA_ANNOUNCEMENT_VOLUME, announcementVolume)
+            ?: announcementVolume
+        val normalizedVolume = normalizeAnnouncementVolume(requestedVolume)
+        synchronized(stateLock) {
+            announcementVolume = normalizedVolume
+        }
+        phaseAudioPlayer.setAnnouncementVolume(normalizedVolume)
+
+        val state = currentUiState()
+        publishAndPersistState(state)
+        return state
+    }
+
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
             return
@@ -561,6 +586,7 @@ class WalkingTimerService : Service() {
         const val ACTION_PAUSE = "com.goenc.dailymotiontimer.action.PAUSE"
         const val ACTION_STOP = "com.goenc.dailymotiontimer.action.STOP"
         const val ACTION_RESTORE = "com.goenc.dailymotiontimer.action.RESTORE"
+        const val ACTION_UPDATE_ANNOUNCEMENT_VOLUME = "com.goenc.dailymotiontimer.action.UPDATE_ANNOUNCEMENT_VOLUME"
 
         private const val NOTIFICATION_CHANNEL_ID = "walking_timer"
         private const val NOTIFICATION_ID = 1001
@@ -568,11 +594,18 @@ class WalkingTimerService : Service() {
         private const val REQUEST_CODE_PAUSE = 1
         private const val REQUEST_CODE_RESUME = 2
         private const val REQUEST_CODE_STOP = 3
+        private const val EXTRA_ANNOUNCEMENT_VOLUME = "extra_announcement_volume"
         private const val TAG = "WalkingTimerService"
 
         fun createIntent(context: Context, action: String): Intent {
             return Intent(context, WalkingTimerService::class.java).apply {
                 this.action = action
+            }
+        }
+
+        fun createAnnouncementVolumeIntent(context: Context, announcementVolume: Float): Intent {
+            return createIntent(context, ACTION_UPDATE_ANNOUNCEMENT_VOLUME).apply {
+                putExtra(EXTRA_ANNOUNCEMENT_VOLUME, announcementVolume)
             }
         }
     }

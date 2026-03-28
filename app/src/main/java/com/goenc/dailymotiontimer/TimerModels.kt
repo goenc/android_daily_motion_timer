@@ -11,6 +11,7 @@ enum class WalkingPhase(val label: String, val announcement: String) {
 
 val PHASE_DURATION_OPTIONS_SECONDS = listOf(10, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330)
 const val DEFAULT_PHASE_DURATION_SECONDS = 180
+const val DEFAULT_ANNOUNCEMENT_VOLUME = 1.0f
 
 data class TimerUiState(
     val currentPhase: WalkingPhase = WalkingPhase.Fast,
@@ -18,6 +19,7 @@ data class TimerUiState(
     val elapsedSeconds: Int = 0,
     val fastPhaseDurationSeconds: Int = DEFAULT_PHASE_DURATION_SECONDS,
     val slowPhaseDurationSeconds: Int = DEFAULT_PHASE_DURATION_SECONDS,
+    val announcementVolume: Float = DEFAULT_ANNOUNCEMENT_VOLUME,
     val isVibrationEnabled: Boolean = true,
     val isRunning: Boolean = false,
     val isPaused: Boolean = false,
@@ -66,6 +68,7 @@ data class TimerUiState(
             elapsedSeconds = elapsedSecondsFromMillis(snapshot.elapsedActiveMillis),
             fastPhaseDurationSeconds = normalizedFastDurationSeconds,
             slowPhaseDurationSeconds = normalizedSlowDurationSeconds,
+            announcementVolume = normalizeAnnouncementVolume(announcementVolume),
         )
     }
 }
@@ -79,11 +82,13 @@ data class PersistedTimerState(
     val startPhase: WalkingPhase,
     val isRunning: Boolean,
     val isPaused: Boolean,
+    val announcementVolume: Float,
     val isVibrationEnabled: Boolean,
 ) {
     fun sanitized(nowElapsedRealtime: Long): PersistedTimerState {
         val normalizedFastDurationMillis = normalizePhaseDurationMillis(fastDurationMillis)
         val normalizedSlowDurationMillis = normalizePhaseDurationMillis(slowDurationMillis)
+        val normalizedAnnouncementVolume = normalizeAnnouncementVolume(announcementVolume)
         val hasValidSession =
             sessionStartElapsedRealtime > 0L && sessionStartElapsedRealtime <= nowElapsedRealtime
         val sanitizedPauseStartedElapsedRealtime =
@@ -107,6 +112,7 @@ data class PersistedTimerState(
             slowDurationMillis = normalizedSlowDurationMillis,
             isRunning = sanitizedIsRunning,
             isPaused = sanitizedIsPaused,
+            announcementVolume = normalizedAnnouncementVolume,
         )
     }
 
@@ -115,6 +121,7 @@ data class PersistedTimerState(
         return TimerUiState(
             fastPhaseDurationSeconds = durationSecondsFromMillis(sanitizedState.fastDurationMillis),
             slowPhaseDurationSeconds = durationSecondsFromMillis(sanitizedState.slowDurationMillis),
+            announcementVolume = sanitizedState.announcementVolume,
             isVibrationEnabled = sanitizedState.isVibrationEnabled,
             isRunning = sanitizedState.isRunning,
             isPaused = sanitizedState.isPaused,
@@ -151,6 +158,14 @@ internal fun durationSecondsFromMillis(durationMillis: Long): Int {
 
 internal fun normalizePhaseDurationMillis(durationMillis: Long): Long {
     return durationMillisFromSeconds(durationSecondsFromMillis(durationMillis))
+}
+
+internal fun normalizeAnnouncementVolume(volume: Float): Float {
+    return if (volume.isNaN() || volume.isInfinite()) {
+        DEFAULT_ANNOUNCEMENT_VOLUME
+    } else {
+        volume.coerceIn(0.0f, 1.0f)
+    }
 }
 
 internal fun phaseDurationSeconds(
@@ -262,6 +277,7 @@ internal fun calculateTimerSessionSnapshot(
 internal fun TimerUiState.toPersistedState(): PersistedTimerState {
     val normalizedFastDurationSeconds = normalizePhaseDurationSeconds(fastPhaseDurationSeconds)
     val normalizedSlowDurationSeconds = normalizePhaseDurationSeconds(slowPhaseDurationSeconds)
+    val normalizedAnnouncementVolume = normalizeAnnouncementVolume(announcementVolume)
     return PersistedTimerState(
         sessionStartElapsedRealtime = if (isActive) sessionStartElapsedRealtime else 0L,
         accumulatedPauseMillis = if (isActive) accumulatedPauseMillis.coerceAtLeast(0L) else 0L,
@@ -271,6 +287,7 @@ internal fun TimerUiState.toPersistedState(): PersistedTimerState {
         startPhase = if (isActive) startPhase else WalkingPhase.Fast,
         isRunning = isRunning,
         isPaused = isPaused,
+        announcementVolume = normalizedAnnouncementVolume,
         isVibrationEnabled = isVibrationEnabled,
     )
 }
