@@ -10,7 +10,8 @@
     <string name="vibration_enabled_label">バイブ通知</string>
     <string name="setting_on">ON</string>
     <string name="setting_off">OFF</string>
-    <string name="notification_status">残り %1$s / 累計 %2$s</string>
+    <string name="notification_running">タイマー動作中</string>
+    <string name="notification_paused">タイマー一時停止中</string>
     <string name="timer_notification_channel_name">歩行タイマー</string>
     <string name="timer_notification_channel_description">歩行タイマーの進行状況を表示します</string>
 </resources>

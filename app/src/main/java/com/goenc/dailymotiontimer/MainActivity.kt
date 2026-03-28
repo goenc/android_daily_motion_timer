@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.ComponentActivity
@@ -28,6 +29,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -38,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.goenc.dailymotiontimer.ui.theme.WorkoutFlowTimerTheme
+import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
 class MainActivity : ComponentActivity() {
@@ -50,12 +53,13 @@ class MainActivity : ComponentActivity() {
             WorkoutFlowTimerTheme {
                 NotificationPermissionEffect()
                 val uiState by viewModel.uiState.collectAsState()
+                val displayState = rememberDisplayState(uiState)
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     TimerScreen(
-                        uiState = uiState,
+                        uiState = displayState,
                         modifier = Modifier.padding(innerPadding),
                         onStartPauseClick = {
-                            if (uiState.isRunning) {
+                            if (displayState.isRunning) {
                                 viewModel.pause()
                             } else {
                                 viewModel.startOrResume()
@@ -70,6 +74,21 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+}
+
+@Composable
+private fun rememberDisplayState(uiState: TimerUiState): TimerUiState {
+    val displayState by produceState(
+        initialValue = uiState.resolveAt(SystemClock.elapsedRealtime()),
+        uiState,
+    ) {
+        value = uiState.resolveAt(SystemClock.elapsedRealtime())
+        while (uiState.isRunning) {
+            delay(UI_REFRESH_INTERVAL_MILLIS)
+            value = uiState.resolveAt(SystemClock.elapsedRealtime())
+        }
+    }
+    return displayState
 }
 
 @Composable
@@ -253,3 +272,5 @@ private fun durationSliderIndex(durationSeconds: Int): Int {
     return PHASE_DURATION_OPTIONS_SECONDS.indexOf(normalizePhaseDurationSeconds(durationSeconds))
         .coerceAtLeast(0)
 }
+
+private const val UI_REFRESH_INTERVAL_MILLIS = 1_000L

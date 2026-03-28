@@ -23,10 +23,7 @@ object WalkingTimerController {
 
     fun restoreState(context: Context) {
         val persistedState = WalkingTimerStateStore.load(context.applicationContext)
-            ?.toUiState(
-                nowElapsedRealtime = SystemClock.elapsedRealtime(),
-                nowWallClockMillis = System.currentTimeMillis(),
-            )
+            ?.toUiState(nowElapsedRealtime = SystemClock.elapsedRealtime())
             ?: TimerUiState()
         publishState(persistedState)
 
@@ -87,10 +84,7 @@ object WalkingTimerController {
         publishState(updatedState)
         WalkingTimerStateStore.save(
             context.applicationContext,
-            updatedState.toPersistedState(
-                nowElapsedRealtime = SystemClock.elapsedRealtime(),
-                nowWallClockMillis = System.currentTimeMillis(),
-            ),
+            updatedState.toPersistedState(),
         )
     }
 
@@ -121,10 +115,7 @@ object WalkingTimerController {
         publishState(updatedState)
         WalkingTimerStateStore.save(
             context.applicationContext,
-            updatedState.toPersistedState(
-                nowElapsedRealtime = SystemClock.elapsedRealtime(),
-                nowWallClockMillis = System.currentTimeMillis(),
-            ),
+            updatedState.toPersistedState(),
         )
     }
 }

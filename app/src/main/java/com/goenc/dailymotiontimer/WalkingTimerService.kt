@@ -17,68 +17,46 @@ import android.os.VibratorManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
-import java.util.concurrent.Executors
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ExecutorCoroutineDispatcher
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 class WalkingTimerService : Service() {
-    private data class PreciseTimerSnapshot(
-        val uiState: TimerUiState,
-        val totalElapsedMillis: Long,
-        val phaseElapsedMillis: Long,
-    )
-
     private val stateLock = Any()
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private val tickerDispatcher: ExecutorCoroutineDispatcher =
-        Executors.newSingleThreadExecutor { runnable ->
-            Thread(runnable, "WalkingTimerTicker").apply {
-                isDaemon = true
-            }
-        }.asCoroutineDispatcher()
-    private val tickerScope = CoroutineScope(SupervisorJob() + tickerDispatcher)
 
-    private var tickerJob: Job? = null
+    private var phaseTransitionJob: Job? = null
     private var phaseAnnouncementJob: Job? = null
     private lateinit var phaseAudioPlayer: PhaseAudioPlayer
 
-    private var currentPhase = WalkingPhase.Fast
-    private var totalElapsedBeforeRunMillis = 0L
-    private var phaseElapsedBeforeRunMillis = 0L
-    private var fastPhaseDurationSeconds = DEFAULT_PHASE_DURATION_SECONDS
-    private var slowPhaseDurationSeconds = DEFAULT_PHASE_DURATION_SECONDS
+    private var sessionStartElapsedRealtime = 0L
+    private var accumulatedPauseMillis = 0L
+    private var pauseStartedElapsedRealtime = 0L
+    private var fastDurationMillis = durationMillisFromSeconds(DEFAULT_PHASE_DURATION_SECONDS)
+    private var slowDurationMillis = durationMillisFromSeconds(DEFAULT_PHASE_DURATION_SECONDS)
+    private var startPhase = WalkingPhase.Fast
     private var isVibrationEnabled = true
-    private var runStartedAtElapsedRealtime = 0L
-    private var phaseStartedAtElapsedRealtime = 0L
     private var isRunning = false
     private var isPaused = false
     @Volatile
     private var hasForegroundNotification = false
-    private var lastObservedPhase = WalkingPhase.Fast
-    private var pendingRestoredAnnouncementPhase: WalkingPhase? = null
     private var wakeLock: PowerManager.WakeLock? = null
-    private var notificationTotalElapsedMillis = 0L
-    private var notificationPhaseElapsedMillis = 0L
 
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
         phaseAudioPlayer = PhaseAudioPlayer(applicationContext)
         wakeLock = createWakeLock()
+
         val initialState = restorePersistedState() ?: TimerUiState()
         if (initialState.isRunning) {
             acquireWakeLockIfNeeded()
         }
-        setLastObservedPhase(initialState.currentPhase)
         publishState(initialState)
     }
 
@@ -97,50 +75,55 @@ class WalkingTimerService : Service() {
     }
 
     override fun onDestroy() {
-        cancelTickerJob("service destroy")
+        cancelPhaseTransitionJob("service destroy")
         cancelPhaseAnnouncementJob("service destroy")
         val state = currentUiState()
         if (state.isActive) {
-            persistState(state)
+            persistState()
         }
         releaseWakeLockIfHeld()
         phaseAudioPlayer.release()
-        tickerScope.cancel()
         serviceScope.cancel()
-        tickerDispatcher.close()
         super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     private fun startOrResumeTimer(): TimerUiState {
+        val nowElapsedRealtime = SystemClock.elapsedRealtime()
         if (isTimerRunning()) {
-            val state = currentUiState()
-            setLastObservedPhase(state.currentPhase)
+            val state = currentUiState(nowElapsedRealtime)
             showNotification(state, promoteToForeground = !hasForegroundNotification)
             publishAndPersistState(state)
+            scheduleNextPhaseTransition(nowElapsedRealtime)
             return state
         }
 
         if (!isTimerPaused()) {
             restoreConfiguredPhaseDurations()
-            resetTimerProgressState()
+            synchronized(stateLock) {
+                sessionStartElapsedRealtime = nowElapsedRealtime
+                accumulatedPauseMillis = 0L
+                pauseStartedElapsedRealtime = 0L
+                startPhase = WalkingPhase.Fast
+                isRunning = true
+                isPaused = false
+            }
+        } else {
+            synchronized(stateLock) {
+                accumulatedPauseMillis +=
+                    (nowElapsedRealtime - pauseStartedElapsedRealtime).coerceAtLeast(0L)
+                pauseStartedElapsedRealtime = 0L
+                isRunning = true
+                isPaused = false
+            }
         }
 
-        val now = SystemClock.elapsedRealtime()
-        synchronized(stateLock) {
-            runStartedAtElapsedRealtime = now
-            phaseStartedAtElapsedRealtime = now
-            isRunning = true
-            isPaused = false
-        }
         acquireWakeLockIfNeeded()
-
-        val state = calculateSnapshot(now)
-        setLastObservedPhase(state.currentPhase)
+        val state = currentUiState(nowElapsedRealtime)
         showNotification(state, promoteToForeground = true)
         publishAndPersistState(state)
-        startTicker()
+        scheduleNextPhaseTransition(nowElapsedRealtime)
         return state
     }
 
@@ -156,28 +139,17 @@ class WalkingTimerService : Service() {
             return state
         }
 
-        val now = SystemClock.elapsedRealtime()
-        val snapshot = calculatePreciseSnapshot(now)
-        val state = snapshot.uiState
-        val transitionedPhase = observePhaseTransition(state.currentPhase)
+        val nowElapsedRealtime = SystemClock.elapsedRealtime()
         synchronized(stateLock) {
-            totalElapsedBeforeRunMillis = snapshot.totalElapsedMillis
-            phaseElapsedBeforeRunMillis = snapshot.phaseElapsedMillis
-            currentPhase = state.currentPhase
+            pauseStartedElapsedRealtime = nowElapsedRealtime
             isRunning = false
             isPaused = true
-            runStartedAtElapsedRealtime = 0L
-            phaseStartedAtElapsedRealtime = 0L
-            rememberNotificationSnapshotLocked(snapshot)
         }
-        cancelTickerJob("pause")
+        cancelPhaseTransitionJob("pause")
         cancelPhaseAnnouncementJob("pause")
         releaseWakeLockIfHeld()
-        val pausedState = state.copy(isRunning = false, isPaused = true)
-        setLastObservedPhase(pausedState.currentPhase)
-        transitionedPhase?.let { phase ->
-            enqueuePhaseAnnouncement(phase, source = "pause")
-        }
+
+        val pausedState = currentUiState(nowElapsedRealtime)
         showNotification(pausedState, promoteToForeground = !hasForegroundNotification)
         publishAndPersistState(pausedState)
         return pausedState
@@ -187,15 +159,15 @@ class WalkingTimerService : Service() {
         synchronized(stateLock) {
             isRunning = false
             isPaused = false
-            pendingRestoredAnnouncementPhase = null
         }
-        cancelTickerJob("stop")
+        cancelPhaseTransitionJob("stop")
         cancelPhaseAnnouncementJob("stop")
         releaseWakeLockIfHeld()
         phaseAudioPlayer.stop()
         resetTimerProgressState()
+        persistState()
+
         val stoppedState = currentUiState()
-        persistState(stoppedState)
         hasForegroundNotification = false
         stopForeground(STOP_FOREGROUND_REMOVE)
         NotificationManagerCompat.from(this).cancel(NOTIFICATION_ID)
@@ -203,148 +175,50 @@ class WalkingTimerService : Service() {
         stopSelf()
     }
 
-    private fun startTicker() {
-        cancelTickerJob("restart ticker")
-        tickerJob = tickerScope.launch {
-            Log.i(TAG, "Ticker started on ${Thread.currentThread().name}")
-            while (isActive) {
-                try {
-                    if (!isTimerRunning()) {
-                        Log.i(TAG, "Ticker stopped because timer is not running")
-                        break
-                    }
-
-                    val state = try {
-                        calculateSnapshot(SystemClock.elapsedRealtime())
-                    } catch (error: CancellationException) {
-                        throw error
-                    } catch (error: Throwable) {
-                        Log.e(TAG, "Ticker calculateSnapshot failed", error)
-                        delay(TICK_INTERVAL_MILLIS)
-                        continue
-                    }
-
-                    if (!isTimerRunning()) {
-                        Log.i(TAG, "Ticker skipped publish because timer stopped during snapshot calculation")
-                        break
-                    }
-
-                    val transitionedPhase = try {
-                        observePhaseTransition(state.currentPhase)
-                    } catch (error: CancellationException) {
-                        throw error
-                    } catch (error: Throwable) {
-                        Log.e(TAG, "Ticker phase transition detection failed", error)
-                        null
-                    }
-
-                    try {
-                        publishAndPersistState(state)
-                    } catch (error: CancellationException) {
-                        throw error
-                    } catch (error: Throwable) {
-                        Log.e(TAG, "Ticker publishAndPersistState failed", error)
-                    }
-
-                    try {
-                        updateNotification(state)
-                    } catch (error: CancellationException) {
-                        throw error
-                    } catch (error: Throwable) {
-                        Log.e(TAG, "Ticker updateNotification failed", error)
-                    }
-
-                    if (transitionedPhase != null) {
-                        try {
-                            enqueuePhaseAnnouncement(transitionedPhase, source = "ticker")
-                        } catch (error: CancellationException) {
-                            throw error
-                        } catch (error: Throwable) {
-                            Log.e(
-                                TAG,
-                                "Ticker enqueuePhaseAnnouncement failed for ${transitionedPhase.name}",
-                                error,
-                            )
-                        }
-                    }
-                } catch (error: CancellationException) {
-                    throw error
-                } catch (error: Throwable) {
-                    Log.e(TAG, "Ticker iteration failed unexpectedly and will continue", error)
-                }
-
-                delay(TICK_INTERVAL_MILLIS)
-            }
-            Log.i(TAG, "Ticker loop finished")
-        }
-    }
-
-    private fun calculateSnapshot(now: Long): TimerUiState {
-        val snapshot = calculatePreciseSnapshot(now)
-        rememberNotificationSnapshot(snapshot)
-        return snapshot.uiState
-    }
-
-    private fun rememberNotificationSnapshot(snapshot: PreciseTimerSnapshot) {
-        synchronized(stateLock) {
-            rememberNotificationSnapshotLocked(snapshot)
-        }
-    }
-
-    private fun calculatePreciseSnapshot(now: Long): PreciseTimerSnapshot {
-        return synchronized(stateLock) {
+    private fun scheduleNextPhaseTransition(nowElapsedRealtime: Long = SystemClock.elapsedRealtime()) {
+        cancelPhaseTransitionJob("reschedule phase transition")
+        val delayMillis = synchronized(stateLock) {
             if (!isRunning) {
-                return@synchronized PreciseTimerSnapshot(
-                    uiState = TimerUiState(
-                        currentPhase = currentPhase,
-                        remainingSeconds = remainingSecondsForPhaseMillis(
-                            phase = currentPhase,
-                            phaseElapsedMillis = phaseElapsedBeforeRunMillis,
-                            fastPhaseDurationSeconds = fastPhaseDurationSeconds,
-                            slowPhaseDurationSeconds = slowPhaseDurationSeconds,
-                        ),
-                        elapsedSeconds = elapsedSecondsFromMillis(totalElapsedBeforeRunMillis),
-                        fastPhaseDurationSeconds = fastPhaseDurationSeconds,
-                        slowPhaseDurationSeconds = slowPhaseDurationSeconds,
-                        isVibrationEnabled = isVibrationEnabled,
-                        isRunning = false,
-                        isPaused = isPaused,
-                    ),
-                    totalElapsedMillis = totalElapsedBeforeRunMillis,
-                    phaseElapsedMillis = phaseElapsedBeforeRunMillis,
-                )
+                null
+            } else {
+                calculateTimerSessionSnapshot(
+                    nowElapsedRealtime = nowElapsedRealtime,
+                    sessionStartElapsedRealtime = sessionStartElapsedRealtime,
+                    accumulatedPauseMillis = accumulatedPauseMillis,
+                    pauseStartedElapsedRealtime = pauseStartedElapsedRealtime,
+                    fastDurationMillis = fastDurationMillis,
+                    slowDurationMillis = slowDurationMillis,
+                    startPhase = startPhase,
+                    isRunning = isRunning,
+                    isPaused = isPaused,
+                ).remainingPhaseMillis.coerceAtLeast(1L)
             }
+        } ?: return
 
-            val totalElapsedMillis =
-                totalElapsedBeforeRunMillis + (now - runStartedAtElapsedRealtime).coerceAtLeast(0L)
-            val phaseProgress = advancePhaseProgressMillis(
-                startingPhase = currentPhase,
-                startingPhaseElapsedMillis = phaseElapsedBeforeRunMillis,
-                additionalElapsedMillis = (now - phaseStartedAtElapsedRealtime).coerceAtLeast(0L),
-                fastPhaseDurationSeconds = fastPhaseDurationSeconds,
-                slowPhaseDurationSeconds = slowPhaseDurationSeconds,
-            )
-
-            PreciseTimerSnapshot(
-                uiState = TimerUiState(
-                    currentPhase = phaseProgress.currentPhase,
-                    remainingSeconds = remainingSecondsForPhaseMillis(
-                        phase = phaseProgress.currentPhase,
-                        phaseElapsedMillis = phaseProgress.phaseElapsedMillis,
-                        fastPhaseDurationSeconds = fastPhaseDurationSeconds,
-                        slowPhaseDurationSeconds = slowPhaseDurationSeconds,
-                    ),
-                    elapsedSeconds = elapsedSecondsFromMillis(totalElapsedMillis),
-                    fastPhaseDurationSeconds = fastPhaseDurationSeconds,
-                    slowPhaseDurationSeconds = slowPhaseDurationSeconds,
-                    isVibrationEnabled = isVibrationEnabled,
-                    isRunning = true,
-                    isPaused = false,
-                ),
-                totalElapsedMillis = totalElapsedMillis,
-                phaseElapsedMillis = phaseProgress.phaseElapsedMillis,
-            )
+        phaseTransitionJob = serviceScope.launch {
+            try {
+                Log.i(TAG, "Scheduling next phase transition in ${delayMillis}ms")
+                delay(delayMillis)
+                handleScheduledPhaseTransition()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                Log.e(TAG, "Scheduled phase transition failed", error)
+                scheduleNextPhaseTransition()
+            }
         }
+    }
+
+    private fun handleScheduledPhaseTransition() {
+        val nowElapsedRealtime = SystemClock.elapsedRealtime()
+        val state = currentUiState(nowElapsedRealtime)
+        if (!state.isRunning) {
+            return
+        }
+
+        publishAndPersistState(state)
+        enqueuePhaseAnnouncement(state.currentPhase, source = "phase transition")
+        scheduleNextPhaseTransition(nowElapsedRealtime)
     }
 
     private fun publishCurrentState() {
@@ -353,7 +227,7 @@ class WalkingTimerService : Service() {
 
     private fun publishAndPersistState(state: TimerUiState) {
         publishState(state)
-        persistState(state)
+        persistState()
     }
 
     private fun publishState(state: TimerUiState) {
@@ -366,16 +240,6 @@ class WalkingTimerService : Service() {
             return
         }
         vibrateSafely()
-    }
-
-    private fun announcePendingRestoredPhaseTransition() {
-        val phase = synchronized(stateLock) {
-            pendingRestoredAnnouncementPhase.also {
-                pendingRestoredAnnouncementPhase = null
-            }
-        } ?: return
-        Log.i(TAG, "Queueing restored phase transition for ${phase.name}")
-        enqueuePhaseAnnouncement(phase, source = "restore")
     }
 
     private fun vibrateSafely() {
@@ -404,12 +268,14 @@ class WalkingTimerService : Service() {
     private fun buildNotification(state: TimerUiState): Notification {
         val builder = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle(state.currentPhase.label)
+            .setContentTitle(getString(R.string.app_name))
             .setContentText(
                 getString(
-                    R.string.notification_status,
-                    state.formattedRemainingTime,
-                    state.formattedElapsedTime,
+                    if (state.isPaused) {
+                        R.string.notification_paused
+                    } else {
+                        R.string.notification_running
+                    },
                 ),
             )
             .setContentIntent(createContentIntent())
@@ -492,141 +358,102 @@ class WalkingTimerService : Service() {
 
         publishAndPersistState(restoredState)
         if (restoredState.isRunning) {
-            startTicker()
-            announcePendingRestoredPhaseTransition()
+            acquireWakeLockIfNeeded()
+            scheduleNextPhaseTransition()
         } else {
-            cancelTickerJob("restore inactive session")
+            cancelPhaseTransitionJob("restore inactive session")
             cancelPhaseAnnouncementJob("restore inactive session")
+            releaseWakeLockIfHeld()
         }
         return restoredState
     }
 
     private fun restorePersistedState(): TimerUiState? {
-        val persistedState = WalkingTimerStateStore.load(this) ?: return null
         val nowElapsedRealtime = SystemClock.elapsedRealtime()
-        val provisionalRestoredState = persistedState.toUiState(
-            nowElapsedRealtime = nowElapsedRealtime,
-            nowWallClockMillis = System.currentTimeMillis(),
-        )
+        val persistedState = WalkingTimerStateStore.load(this)?.sanitized(nowElapsedRealtime) ?: return null
 
         synchronized(stateLock) {
-            fastPhaseDurationSeconds = provisionalRestoredState.fastPhaseDurationSeconds
-            slowPhaseDurationSeconds = provisionalRestoredState.slowPhaseDurationSeconds
-            isVibrationEnabled = provisionalRestoredState.isVibrationEnabled
-            isRunning = provisionalRestoredState.isRunning
-            isPaused = provisionalRestoredState.isPaused
-
-            val canReuseStoredRealtimeBase =
-                persistedState.isRunning &&
-                    persistedState.runStartedAtElapsedRealtime > 0L &&
-                    persistedState.phaseStartedAtElapsedRealtime > 0L &&
-                    nowElapsedRealtime >= persistedState.runStartedAtElapsedRealtime &&
-                    nowElapsedRealtime >= persistedState.phaseStartedAtElapsedRealtime
-
-            if (canReuseStoredRealtimeBase) {
-                currentPhase = persistedState.currentPhase
-                totalElapsedBeforeRunMillis = persistedState.totalElapsedBeforeRunMillis
-                phaseElapsedBeforeRunMillis = persistedState.phaseElapsedBeforeRunMillis
-                runStartedAtElapsedRealtime = persistedState.runStartedAtElapsedRealtime
-                phaseStartedAtElapsedRealtime = persistedState.phaseStartedAtElapsedRealtime
-            } else {
-                currentPhase = provisionalRestoredState.currentPhase
-                totalElapsedBeforeRunMillis = persistedState.notificationTotalElapsedMillis()
-                phaseElapsedBeforeRunMillis = persistedState.notificationPhaseElapsedMillis(
-                    fastPhaseDurationSeconds = fastPhaseDurationSeconds,
-                    slowPhaseDurationSeconds = slowPhaseDurationSeconds,
-                )
-                if (provisionalRestoredState.isRunning) {
-                    runStartedAtElapsedRealtime = nowElapsedRealtime
-                    phaseStartedAtElapsedRealtime = nowElapsedRealtime
+            sessionStartElapsedRealtime =
+                if (persistedState.isRunning || persistedState.isPaused) {
+                    persistedState.sessionStartElapsedRealtime
                 } else {
-                    runStartedAtElapsedRealtime = 0L
-                    phaseStartedAtElapsedRealtime = 0L
+                    0L
                 }
-            }
-
-            if (!provisionalRestoredState.isRunning) {
-                runStartedAtElapsedRealtime = 0L
-                phaseStartedAtElapsedRealtime = 0L
-            }
+            accumulatedPauseMillis =
+                if (persistedState.isRunning || persistedState.isPaused) {
+                    persistedState.accumulatedPauseMillis
+                } else {
+                    0L
+                }
+            pauseStartedElapsedRealtime =
+                if (persistedState.isPaused) persistedState.pauseStartedElapsedRealtime else 0L
+            fastDurationMillis = persistedState.fastDurationMillis
+            slowDurationMillis = persistedState.slowDurationMillis
+            startPhase = persistedState.startPhase
+            isRunning = persistedState.isRunning
+            isPaused = persistedState.isPaused
+            isVibrationEnabled = persistedState.isVibrationEnabled
         }
 
-        val restoredState = calculateSnapshot(nowElapsedRealtime)
-        synchronized(stateLock) {
-            pendingRestoredAnnouncementPhase =
-                if (restoredState.isRunning && persistedState.notificationPhase != restoredState.currentPhase) {
-                    restoredState.currentPhase
-                } else {
-                    null
-                }
-            lastObservedPhase = restoredState.currentPhase
-        }
-        return restoredState
+        return persistedState.toUiState(nowElapsedRealtime)
     }
 
     private fun restoreConfiguredPhaseDurations() {
         val persistedState = WalkingTimerStateStore.load(this) ?: return
         synchronized(stateLock) {
-            fastPhaseDurationSeconds = persistedState.fastPhaseDurationSeconds
-            slowPhaseDurationSeconds = persistedState.slowPhaseDurationSeconds
+            fastDurationMillis = persistedState.fastDurationMillis
+            slowDurationMillis = persistedState.slowDurationMillis
             isVibrationEnabled = persistedState.isVibrationEnabled
         }
     }
 
-    private fun persistState(state: TimerUiState) {
-        val nowElapsedRealtime = SystemClock.elapsedRealtime()
-        val nowWallClockMillis = System.currentTimeMillis()
+    private fun persistState() {
         val persistedState = synchronized(stateLock) {
             PersistedTimerState(
-                currentPhase = currentPhase,
-                totalElapsedBeforeRunMillis = totalElapsedBeforeRunMillis,
-                phaseElapsedBeforeRunMillis = phaseElapsedBeforeRunMillis,
-                fastPhaseDurationSeconds = fastPhaseDurationSeconds,
-                slowPhaseDurationSeconds = slowPhaseDurationSeconds,
-                isVibrationEnabled = isVibrationEnabled,
-                runStartedAtElapsedRealtime = if (isRunning) runStartedAtElapsedRealtime else 0L,
-                phaseStartedAtElapsedRealtime = if (isRunning) phaseStartedAtElapsedRealtime else 0L,
-                persistedAtElapsedRealtime = nowElapsedRealtime,
-                persistedAtWallClockMillis = nowWallClockMillis,
+                sessionStartElapsedRealtime =
+                    if (isRunning || isPaused) sessionStartElapsedRealtime else 0L,
+                accumulatedPauseMillis = if (isRunning || isPaused) accumulatedPauseMillis else 0L,
+                pauseStartedElapsedRealtime = if (isPaused) pauseStartedElapsedRealtime else 0L,
+                fastDurationMillis = fastDurationMillis,
+                slowDurationMillis = slowDurationMillis,
+                startPhase = startPhase,
                 isRunning = isRunning,
                 isPaused = isPaused,
-                notificationPhase = state.currentPhase,
-                notificationRemainingSeconds = state.remainingSeconds,
-                notificationPhaseElapsedMillis = notificationPhaseElapsedMillis,
-                notificationElapsedSeconds = state.elapsedSeconds,
-                notificationTotalElapsedMillis = notificationTotalElapsedMillis,
-                notificationIsRunning = state.isRunning,
-                notificationIsPaused = state.isPaused,
+                isVibrationEnabled = isVibrationEnabled,
             )
         }
         WalkingTimerStateStore.save(this, persistedState)
     }
 
-    private fun currentUiState(): TimerUiState {
-        return calculateSnapshot(now = SystemClock.elapsedRealtime())
+    private fun currentUiState(nowElapsedRealtime: Long = SystemClock.elapsedRealtime()): TimerUiState {
+        val baseState = synchronized(stateLock) { baseUiStateLocked() }
+        return baseState.resolveAt(nowElapsedRealtime)
+    }
+
+    private fun baseUiStateLocked(): TimerUiState {
+        return TimerUiState(
+            fastPhaseDurationSeconds = durationSecondsFromMillis(fastDurationMillis),
+            slowPhaseDurationSeconds = durationSecondsFromMillis(slowDurationMillis),
+            isVibrationEnabled = isVibrationEnabled,
+            isRunning = isRunning,
+            isPaused = isPaused,
+            sessionStartElapsedRealtime =
+                if (isRunning || isPaused) sessionStartElapsedRealtime else 0L,
+            accumulatedPauseMillis = if (isRunning || isPaused) accumulatedPauseMillis else 0L,
+            pauseStartedElapsedRealtime = if (isPaused) pauseStartedElapsedRealtime else 0L,
+            startPhase = startPhase,
+        )
     }
 
     private fun resetTimerProgressState() {
-        val restoredVibrationEnabled = WalkingTimerStateStore.load(this)?.isVibrationEnabled ?: true
         synchronized(stateLock) {
-            currentPhase = WalkingPhase.Fast
-            totalElapsedBeforeRunMillis = 0L
-            phaseElapsedBeforeRunMillis = 0L
-            runStartedAtElapsedRealtime = 0L
-            phaseStartedAtElapsedRealtime = 0L
-            isVibrationEnabled = restoredVibrationEnabled
+            sessionStartElapsedRealtime = 0L
+            accumulatedPauseMillis = 0L
+            pauseStartedElapsedRealtime = 0L
+            startPhase = WalkingPhase.Fast
             isRunning = false
             isPaused = false
-            notificationTotalElapsedMillis = 0L
-            notificationPhaseElapsedMillis = 0L
-            pendingRestoredAnnouncementPhase = null
-            lastObservedPhase = WalkingPhase.Fast
         }
-    }
-
-    private fun rememberNotificationSnapshotLocked(snapshot: PreciseTimerSnapshot) {
-        notificationTotalElapsedMillis = snapshot.totalElapsedMillis
-        notificationPhaseElapsedMillis = snapshot.phaseElapsedMillis
     }
 
     private fun isTimerRunning(): Boolean {
@@ -639,23 +466,6 @@ class WalkingTimerService : Service() {
 
     private fun isVibrationEnabled(): Boolean {
         return synchronized(stateLock) { isVibrationEnabled }
-    }
-
-    private fun setLastObservedPhase(phase: WalkingPhase) {
-        synchronized(stateLock) {
-            lastObservedPhase = phase
-        }
-    }
-
-    private fun observePhaseTransition(currentPhase: WalkingPhase): WalkingPhase? {
-        return synchronized(stateLock) {
-            if (currentPhase == lastObservedPhase) {
-                null
-            } else {
-                lastObservedPhase = currentPhase
-                currentPhase
-            }
-        }
     }
 
     @Synchronized
@@ -674,12 +484,12 @@ class WalkingTimerService : Service() {
     }
 
     @Synchronized
-    private fun cancelTickerJob(reason: String) {
-        tickerJob?.let { job ->
-            Log.i(TAG, "Cancelling ticker job reason=$reason")
+    private fun cancelPhaseTransitionJob(reason: String) {
+        phaseTransitionJob?.let { job ->
+            Log.i(TAG, "Cancelling phase transition job reason=$reason")
             job.cancel()
         }
-        tickerJob = null
+        phaseTransitionJob = null
     }
 
     @Synchronized
@@ -754,7 +564,6 @@ class WalkingTimerService : Service() {
 
         private const val NOTIFICATION_CHANNEL_ID = "walking_timer"
         private const val NOTIFICATION_ID = 1001
-        private const val TICK_INTERVAL_MILLIS = 1_000L
         private const val TRANSITION_VIBRATION_DURATION_MILLIS = 200L
         private const val REQUEST_CODE_PAUSE = 1
         private const val REQUEST_CODE_RESUME = 2

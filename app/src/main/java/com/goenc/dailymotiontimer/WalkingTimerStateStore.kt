@@ -1,138 +1,113 @@
 package com.goenc.dailymotiontimer
 
 import android.content.Context
+import android.os.SystemClock
 
 internal object WalkingTimerStateStore {
     private const val PREFS_NAME = "walking_timer_state"
-    private const val KEY_CURRENT_PHASE = "current_phase"
-    private const val KEY_TOTAL_ELAPSED_BEFORE_RUN_SECONDS = "total_elapsed_before_run_seconds"
-    private const val KEY_PHASE_ELAPSED_BEFORE_RUN_SECONDS = "phase_elapsed_before_run_seconds"
-    private const val KEY_TOTAL_ELAPSED_BEFORE_RUN_MILLIS = "total_elapsed_before_run_millis"
-    private const val KEY_PHASE_ELAPSED_BEFORE_RUN_MILLIS = "phase_elapsed_before_run_millis"
-    private const val KEY_FAST_PHASE_DURATION_SECONDS = "fast_phase_duration_seconds"
-    private const val KEY_SLOW_PHASE_DURATION_SECONDS = "slow_phase_duration_seconds"
-    private const val KEY_IS_VIBRATION_ENABLED = "is_vibration_enabled"
-    private const val KEY_RUN_STARTED_AT_ELAPSED_REALTIME = "run_started_at_elapsed_realtime"
-    private const val KEY_PHASE_STARTED_AT_ELAPSED_REALTIME = "phase_started_at_elapsed_realtime"
-    private const val KEY_PERSISTED_AT_ELAPSED_REALTIME = "persisted_at_elapsed_realtime"
-    private const val KEY_PERSISTED_AT_WALL_CLOCK_MILLIS = "persisted_at_wall_clock_millis"
+
+    private const val KEY_SESSION_START_ELAPSED_REALTIME = "session_start_elapsed_realtime"
+    private const val KEY_ACCUMULATED_PAUSE_MILLIS = "accumulated_pause_millis"
+    private const val KEY_PAUSE_STARTED_ELAPSED_REALTIME = "pause_started_elapsed_realtime"
+    private const val KEY_FAST_DURATION_MILLIS = "fast_duration_millis"
+    private const val KEY_SLOW_DURATION_MILLIS = "slow_duration_millis"
+    private const val KEY_START_PHASE = "start_phase"
     private const val KEY_IS_RUNNING = "is_running"
     private const val KEY_IS_PAUSED = "is_paused"
-    private const val KEY_NOTIFICATION_PHASE = "notification_phase"
-    private const val KEY_NOTIFICATION_REMAINING_SECONDS = "notification_remaining_seconds"
-    private const val KEY_NOTIFICATION_PHASE_ELAPSED_MILLIS = "notification_phase_elapsed_millis"
-    private const val KEY_NOTIFICATION_ELAPSED_SECONDS = "notification_elapsed_seconds"
-    private const val KEY_NOTIFICATION_TOTAL_ELAPSED_MILLIS = "notification_total_elapsed_millis"
-    private const val KEY_NOTIFICATION_IS_RUNNING = "notification_is_running"
-    private const val KEY_NOTIFICATION_IS_PAUSED = "notification_is_paused"
+    private const val KEY_IS_VIBRATION_ENABLED = "is_vibration_enabled"
+
+    private const val LEGACY_KEY_CURRENT_PHASE = "current_phase"
+    private const val LEGACY_KEY_TOTAL_ELAPSED_BEFORE_RUN_SECONDS = "total_elapsed_before_run_seconds"
+    private const val LEGACY_KEY_TOTAL_ELAPSED_BEFORE_RUN_MILLIS = "total_elapsed_before_run_millis"
+    private const val LEGACY_KEY_FAST_PHASE_DURATION_SECONDS = "fast_phase_duration_seconds"
+    private const val LEGACY_KEY_SLOW_PHASE_DURATION_SECONDS = "slow_phase_duration_seconds"
+    private const val LEGACY_KEY_RUN_STARTED_AT_ELAPSED_REALTIME = "run_started_at_elapsed_realtime"
+    private const val LEGACY_KEY_PERSISTED_AT_ELAPSED_REALTIME = "persisted_at_elapsed_realtime"
+    private const val LEGACY_KEY_NOTIFICATION_ELAPSED_SECONDS = "notification_elapsed_seconds"
+    private const val LEGACY_KEY_NOTIFICATION_TOTAL_ELAPSED_MILLIS = "notification_total_elapsed_millis"
+    private const val LEGACY_KEY_NOTIFICATION_PHASE = "notification_phase"
+    private const val LEGACY_KEY_NOTIFICATION_REMAINING_SECONDS = "notification_remaining_seconds"
+    private const val LEGACY_KEY_PHASE_ELAPSED_BEFORE_RUN_SECONDS = "phase_elapsed_before_run_seconds"
+    private const val LEGACY_KEY_PHASE_ELAPSED_BEFORE_RUN_MILLIS = "phase_elapsed_before_run_millis"
+    private const val LEGACY_KEY_PHASE_STARTED_AT_ELAPSED_REALTIME = "phase_started_at_elapsed_realtime"
+    private const val LEGACY_KEY_PERSISTED_AT_WALL_CLOCK_MILLIS = "persisted_at_wall_clock_millis"
+    private const val LEGACY_KEY_NOTIFICATION_PHASE_ELAPSED_MILLIS = "notification_phase_elapsed_millis"
+    private const val LEGACY_KEY_NOTIFICATION_IS_RUNNING = "notification_is_running"
+    private const val LEGACY_KEY_NOTIFICATION_IS_PAUSED = "notification_is_paused"
 
     fun load(context: Context): PersistedTimerState? {
         val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        if (!prefs.contains(KEY_CURRENT_PHASE)) {
+        if (prefs.contains(KEY_FAST_DURATION_MILLIS)) {
+            return PersistedTimerState(
+                sessionStartElapsedRealtime = prefs.getLong(KEY_SESSION_START_ELAPSED_REALTIME, 0L),
+                accumulatedPauseMillis = prefs.getLong(KEY_ACCUMULATED_PAUSE_MILLIS, 0L),
+                pauseStartedElapsedRealtime = prefs.getLong(KEY_PAUSE_STARTED_ELAPSED_REALTIME, 0L),
+                fastDurationMillis = prefs.getLong(
+                    KEY_FAST_DURATION_MILLIS,
+                    durationMillisFromSeconds(DEFAULT_PHASE_DURATION_SECONDS),
+                ),
+                slowDurationMillis = prefs.getLong(
+                    KEY_SLOW_DURATION_MILLIS,
+                    durationMillisFromSeconds(DEFAULT_PHASE_DURATION_SECONDS),
+                ),
+                startPhase = prefs.readPhase(KEY_START_PHASE, WalkingPhase.Fast),
+                isRunning = prefs.getBoolean(KEY_IS_RUNNING, false),
+                isPaused = prefs.getBoolean(KEY_IS_PAUSED, false),
+                isVibrationEnabled = prefs.getBoolean(KEY_IS_VIBRATION_ENABLED, true),
+            )
+        }
+
+        if (!prefs.contains(LEGACY_KEY_CURRENT_PHASE) &&
+            !prefs.contains(LEGACY_KEY_FAST_PHASE_DURATION_SECONDS)
+        ) {
             return null
         }
 
-        val currentPhase = prefs.readPhase(KEY_CURRENT_PHASE, WalkingPhase.Fast)
-        val fastPhaseDurationSeconds = normalizePhaseDurationSeconds(
-            prefs.getInt(KEY_FAST_PHASE_DURATION_SECONDS, DEFAULT_PHASE_DURATION_SECONDS),
-        )
-        val slowPhaseDurationSeconds = normalizePhaseDurationSeconds(
-            prefs.getInt(KEY_SLOW_PHASE_DURATION_SECONDS, DEFAULT_PHASE_DURATION_SECONDS),
-        )
-        val notificationPhase = prefs.readPhase(KEY_NOTIFICATION_PHASE, WalkingPhase.Fast)
-        val notificationRemainingSeconds = prefs.getInt(
-            KEY_NOTIFICATION_REMAINING_SECONDS,
-            DEFAULT_PHASE_DURATION_SECONDS,
-        )
-
-        return PersistedTimerState(
-            currentPhase = currentPhase,
-            totalElapsedBeforeRunMillis = prefs.getLongOrFallbackSeconds(
-                longKey = KEY_TOTAL_ELAPSED_BEFORE_RUN_MILLIS,
-                secondsKey = KEY_TOTAL_ELAPSED_BEFORE_RUN_SECONDS,
-            ),
-            phaseElapsedBeforeRunMillis = prefs.getLongOrFallbackSeconds(
-                longKey = KEY_PHASE_ELAPSED_BEFORE_RUN_MILLIS,
-                secondsKey = KEY_PHASE_ELAPSED_BEFORE_RUN_SECONDS,
-            ),
-            fastPhaseDurationSeconds = fastPhaseDurationSeconds,
-            slowPhaseDurationSeconds = slowPhaseDurationSeconds,
-            isVibrationEnabled = prefs.getBoolean(KEY_IS_VIBRATION_ENABLED, true),
-            runStartedAtElapsedRealtime = prefs.getLong(KEY_RUN_STARTED_AT_ELAPSED_REALTIME, 0L),
-            phaseStartedAtElapsedRealtime = prefs.getLong(KEY_PHASE_STARTED_AT_ELAPSED_REALTIME, 0L),
-            persistedAtElapsedRealtime = prefs.getLong(KEY_PERSISTED_AT_ELAPSED_REALTIME, 0L),
-            persistedAtWallClockMillis = prefs.getLong(KEY_PERSISTED_AT_WALL_CLOCK_MILLIS, 0L),
-            isRunning = prefs.getBoolean(KEY_IS_RUNNING, false),
-            isPaused = prefs.getBoolean(KEY_IS_PAUSED, false),
-            notificationPhase = notificationPhase,
-            notificationRemainingSeconds = notificationRemainingSeconds,
-            notificationPhaseElapsedMillis = prefs.getLongOrFallback(
-                key = KEY_NOTIFICATION_PHASE_ELAPSED_MILLIS,
-                fallbackValue = elapsedMillisInPhase(
-                    phase = notificationPhase,
-                    remainingSeconds = notificationRemainingSeconds,
-                    fastPhaseDurationSeconds = fastPhaseDurationSeconds,
-                    slowPhaseDurationSeconds = slowPhaseDurationSeconds,
-                ),
-            ),
-            notificationElapsedSeconds = prefs.getInt(KEY_NOTIFICATION_ELAPSED_SECONDS, 0),
-            notificationTotalElapsedMillis = prefs.getLongOrFallbackSeconds(
-                longKey = KEY_NOTIFICATION_TOTAL_ELAPSED_MILLIS,
-                secondsKey = KEY_NOTIFICATION_ELAPSED_SECONDS,
-            ),
-            notificationIsRunning = prefs.getBoolean(KEY_NOTIFICATION_IS_RUNNING, false),
-            notificationIsPaused = prefs.getBoolean(KEY_NOTIFICATION_IS_PAUSED, false),
-        )
+        val migratedState = loadLegacyState(prefs) ?: return null
+        save(context.applicationContext, migratedState)
+        return migratedState
     }
 
     fun save(context: Context, state: PersistedTimerState) {
         context.applicationContext
             .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit()
-            .putString(KEY_CURRENT_PHASE, state.currentPhase.name)
-            .putInt(
-                KEY_TOTAL_ELAPSED_BEFORE_RUN_SECONDS,
-                elapsedSecondsFromMillis(state.totalElapsedBeforeRunMillis),
+            .putLong(
+                KEY_SESSION_START_ELAPSED_REALTIME,
+                if (state.isRunning || state.isPaused) state.sessionStartElapsedRealtime else 0L,
             )
-            .putInt(
-                KEY_PHASE_ELAPSED_BEFORE_RUN_SECONDS,
-                elapsedSecondsFromMillis(state.phaseElapsedBeforeRunMillis),
+            .putLong(
+                KEY_ACCUMULATED_PAUSE_MILLIS,
+                if (state.isRunning || state.isPaused) state.accumulatedPauseMillis.coerceAtLeast(0L) else 0L,
             )
-            .putLong(KEY_TOTAL_ELAPSED_BEFORE_RUN_MILLIS, state.totalElapsedBeforeRunMillis)
-            .putLong(KEY_PHASE_ELAPSED_BEFORE_RUN_MILLIS, state.phaseElapsedBeforeRunMillis)
-            .putInt(KEY_FAST_PHASE_DURATION_SECONDS, state.fastPhaseDurationSeconds)
-            .putInt(KEY_SLOW_PHASE_DURATION_SECONDS, state.slowPhaseDurationSeconds)
-            .putBoolean(KEY_IS_VIBRATION_ENABLED, state.isVibrationEnabled)
-            .putLong(KEY_RUN_STARTED_AT_ELAPSED_REALTIME, state.runStartedAtElapsedRealtime)
-            .putLong(KEY_PHASE_STARTED_AT_ELAPSED_REALTIME, state.phaseStartedAtElapsedRealtime)
-            .putLong(KEY_PERSISTED_AT_ELAPSED_REALTIME, state.persistedAtElapsedRealtime)
-            .putLong(KEY_PERSISTED_AT_WALL_CLOCK_MILLIS, state.persistedAtWallClockMillis)
+            .putLong(
+                KEY_PAUSE_STARTED_ELAPSED_REALTIME,
+                if (state.isPaused) state.pauseStartedElapsedRealtime else 0L,
+            )
+            .putLong(KEY_FAST_DURATION_MILLIS, normalizePhaseDurationMillis(state.fastDurationMillis))
+            .putLong(KEY_SLOW_DURATION_MILLIS, normalizePhaseDurationMillis(state.slowDurationMillis))
+            .putString(KEY_START_PHASE, state.startPhase.name)
             .putBoolean(KEY_IS_RUNNING, state.isRunning)
             .putBoolean(KEY_IS_PAUSED, state.isPaused)
-            .putString(KEY_NOTIFICATION_PHASE, state.notificationPhase.name)
-            .putInt(
-                KEY_NOTIFICATION_REMAINING_SECONDS,
-                remainingSecondsForPhaseMillis(
-                    phase = state.notificationPhase,
-                    phaseElapsedMillis = state.notificationPhaseElapsedMillis(),
-                    fastPhaseDurationSeconds = state.fastPhaseDurationSeconds,
-                    slowPhaseDurationSeconds = state.slowPhaseDurationSeconds,
-                ),
-            )
-            .putLong(
-                KEY_NOTIFICATION_PHASE_ELAPSED_MILLIS,
-                state.notificationPhaseElapsedMillis(),
-            )
-            .putInt(
-                KEY_NOTIFICATION_ELAPSED_SECONDS,
-                elapsedSecondsFromMillis(state.notificationTotalElapsedMillis()),
-            )
-            .putLong(
-                KEY_NOTIFICATION_TOTAL_ELAPSED_MILLIS,
-                state.notificationTotalElapsedMillis(),
-            )
-            .putBoolean(KEY_NOTIFICATION_IS_RUNNING, state.notificationIsRunning)
-            .putBoolean(KEY_NOTIFICATION_IS_PAUSED, state.notificationIsPaused)
+            .putBoolean(KEY_IS_VIBRATION_ENABLED, state.isVibrationEnabled)
+            .remove(LEGACY_KEY_CURRENT_PHASE)
+            .remove(LEGACY_KEY_TOTAL_ELAPSED_BEFORE_RUN_SECONDS)
+            .remove(LEGACY_KEY_TOTAL_ELAPSED_BEFORE_RUN_MILLIS)
+            .remove(LEGACY_KEY_PHASE_ELAPSED_BEFORE_RUN_SECONDS)
+            .remove(LEGACY_KEY_PHASE_ELAPSED_BEFORE_RUN_MILLIS)
+            .remove(LEGACY_KEY_FAST_PHASE_DURATION_SECONDS)
+            .remove(LEGACY_KEY_SLOW_PHASE_DURATION_SECONDS)
+            .remove(LEGACY_KEY_RUN_STARTED_AT_ELAPSED_REALTIME)
+            .remove(LEGACY_KEY_PHASE_STARTED_AT_ELAPSED_REALTIME)
+            .remove(LEGACY_KEY_PERSISTED_AT_ELAPSED_REALTIME)
+            .remove(LEGACY_KEY_PERSISTED_AT_WALL_CLOCK_MILLIS)
+            .remove(LEGACY_KEY_NOTIFICATION_PHASE)
+            .remove(LEGACY_KEY_NOTIFICATION_REMAINING_SECONDS)
+            .remove(LEGACY_KEY_NOTIFICATION_PHASE_ELAPSED_MILLIS)
+            .remove(LEGACY_KEY_NOTIFICATION_ELAPSED_SECONDS)
+            .remove(LEGACY_KEY_NOTIFICATION_TOTAL_ELAPSED_MILLIS)
+            .remove(LEGACY_KEY_NOTIFICATION_IS_RUNNING)
+            .remove(LEGACY_KEY_NOTIFICATION_IS_PAUSED)
             .apply()
     }
 
@@ -142,6 +117,66 @@ internal object WalkingTimerStateStore {
             .edit()
             .clear()
             .apply()
+    }
+
+    private fun loadLegacyState(
+        prefs: android.content.SharedPreferences,
+    ): PersistedTimerState? {
+        val nowElapsedRealtime = SystemClock.elapsedRealtime()
+        val fastPhaseDurationSeconds = normalizePhaseDurationSeconds(
+            prefs.getInt(LEGACY_KEY_FAST_PHASE_DURATION_SECONDS, DEFAULT_PHASE_DURATION_SECONDS),
+        )
+        val slowPhaseDurationSeconds = normalizePhaseDurationSeconds(
+            prefs.getInt(LEGACY_KEY_SLOW_PHASE_DURATION_SECONDS, DEFAULT_PHASE_DURATION_SECONDS),
+        )
+        val isRunning = prefs.getBoolean(KEY_IS_RUNNING, false)
+        val isPaused = prefs.getBoolean(KEY_IS_PAUSED, false)
+        val totalElapsedBeforeRunMillis = prefs.getLongOrFallbackSeconds(
+            longKey = LEGACY_KEY_TOTAL_ELAPSED_BEFORE_RUN_MILLIS,
+            secondsKey = LEGACY_KEY_TOTAL_ELAPSED_BEFORE_RUN_SECONDS,
+        )
+        val notificationElapsedMillis = prefs.getLongOrFallbackSeconds(
+            longKey = LEGACY_KEY_NOTIFICATION_TOTAL_ELAPSED_MILLIS,
+            secondsKey = LEGACY_KEY_NOTIFICATION_ELAPSED_SECONDS,
+        )
+        val persistedAtElapsedRealtime = prefs.getLong(LEGACY_KEY_PERSISTED_AT_ELAPSED_REALTIME, 0L)
+        val runStartedAtElapsedRealtime = prefs.getLong(LEGACY_KEY_RUN_STARTED_AT_ELAPSED_REALTIME, 0L)
+        val activeElapsedMillis = when {
+            isRunning &&
+                runStartedAtElapsedRealtime > 0L &&
+                nowElapsedRealtime >= runStartedAtElapsedRealtime
+            -> {
+                totalElapsedBeforeRunMillis + (nowElapsedRealtime - runStartedAtElapsedRealtime)
+            }
+
+            isRunning &&
+                persistedAtElapsedRealtime > 0L &&
+                nowElapsedRealtime >= persistedAtElapsedRealtime
+            -> {
+                notificationElapsedMillis + (nowElapsedRealtime - persistedAtElapsedRealtime)
+            }
+
+            isRunning -> notificationElapsedMillis
+            isPaused -> totalElapsedBeforeRunMillis
+            else -> 0L
+        }.coerceAtLeast(0L)
+
+        val hasSession = (isRunning || isPaused) && activeElapsedMillis >= 0L
+        return PersistedTimerState(
+            sessionStartElapsedRealtime = if (hasSession) {
+                (nowElapsedRealtime - activeElapsedMillis).coerceAtLeast(0L)
+            } else {
+                0L
+            },
+            accumulatedPauseMillis = 0L,
+            pauseStartedElapsedRealtime = if (isPaused && hasSession) nowElapsedRealtime else 0L,
+            fastDurationMillis = durationMillisFromSeconds(fastPhaseDurationSeconds),
+            slowDurationMillis = durationMillisFromSeconds(slowPhaseDurationSeconds),
+            startPhase = WalkingPhase.Fast,
+            isRunning = isRunning && hasSession,
+            isPaused = isPaused && hasSession,
+            isVibrationEnabled = prefs.getBoolean(KEY_IS_VIBRATION_ENABLED, true),
+        )
     }
 
     private fun android.content.SharedPreferences.readPhase(
@@ -160,15 +195,5 @@ internal object WalkingTimerStateStore {
             return getLong(longKey, 0L)
         }
         return getInt(secondsKey, 0).toLong() * 1_000L
-    }
-
-    private fun android.content.SharedPreferences.getLongOrFallback(
-        key: String,
-        fallbackValue: Long,
-    ): Long {
-        if (contains(key)) {
-            return getLong(key, fallbackValue)
-        }
-        return fallbackValue
     }
 }
