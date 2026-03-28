@@ -9,6 +9,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import android.os.SystemClock
 import android.os.VibrationEffect
 import android.os.Vibrator
@@ -50,12 +51,17 @@ class WalkingTimerService : Service() {
     private var hasForegroundNotification = false
     private var lastObservedPhase = WalkingPhase.Fast
     private var pendingRestoredAnnouncementPhase: WalkingPhase? = null
+    private var wakeLock: PowerManager.WakeLock? = null
 
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
         phaseAudioPlayer = PhaseAudioPlayer(applicationContext)
+        wakeLock = createWakeLock()
         val initialState = restorePersistedState() ?: TimerUiState()
+        if (initialState.isRunning) {
+            acquireWakeLockIfNeeded()
+        }
         lastObservedPhase = initialState.currentPhase
         publishState(initialState)
     }
@@ -79,6 +85,7 @@ class WalkingTimerService : Service() {
         if (currentUiState().isActive) {
             persistState(currentUiState())
         }
+        releaseWakeLockIfHeld()
         phaseAudioPlayer.stop()
         serviceScope.cancel()
         super.onDestroy()
@@ -105,6 +112,7 @@ class WalkingTimerService : Service() {
         phaseStartedAtElapsedRealtime = now
         isRunning = true
         isPaused = false
+        acquireWakeLockIfNeeded()
 
         val state = calculateSnapshot(now, announceTransitions = false)
         lastObservedPhase = state.currentPhase
@@ -139,6 +147,7 @@ class WalkingTimerService : Service() {
         isPaused = true
         runStartedAtElapsedRealtime = 0L
         phaseStartedAtElapsedRealtime = 0L
+        releaseWakeLockIfHeld()
         tickerJob?.cancel()
         tickerJob = null
         val pausedState = state.copy(isRunning = false, isPaused = true)
@@ -152,6 +161,7 @@ class WalkingTimerService : Service() {
         tickerJob?.cancel()
         tickerJob = null
         pendingRestoredAnnouncementPhase = null
+        releaseWakeLockIfHeld()
         phaseAudioPlayer.stop()
         resetTimerProgressState()
         val stoppedState = currentUiState()
@@ -257,9 +267,10 @@ class WalkingTimerService : Service() {
 
     private fun announcePhaseTransition(phase: WalkingPhase) {
         phaseAudioPlayer.play(phase)
-        if (isVibrationEnabled) {
-            vibrateSafely()
+        if (!isVibrationEnabled) {
+            return
         }
+        vibrateSafely()
     }
 
     private fun announcePendingRestoredPhaseTransition() {
@@ -503,6 +514,45 @@ class WalkingTimerService : Service() {
         isPaused = false
         pendingRestoredAnnouncementPhase = null
         lastObservedPhase = WalkingPhase.Fast
+    }
+
+    private fun createWakeLock(): PowerManager.WakeLock? {
+        val powerManager = getSystemService(PowerManager::class.java) ?: run {
+            Log.w(TAG, "PowerManager was unavailable, WakeLock was not created")
+            return null
+        }
+        return powerManager.newWakeLock(
+            PowerManager.PARTIAL_WAKE_LOCK,
+            "$packageName:WalkingTimerService",
+        ).apply {
+            setReferenceCounted(false)
+        }
+    }
+
+    private fun acquireWakeLockIfNeeded() {
+        val lock = wakeLock ?: createWakeLock()?.also { wakeLock = it } ?: return
+        if (lock.isHeld) {
+            return
+        }
+        runCatching {
+            lock.acquire()
+            Log.i(TAG, "WakeLock acquired")
+        }.onFailure { error ->
+            Log.e(TAG, "Failed to acquire WakeLock", error)
+        }
+    }
+
+    private fun releaseWakeLockIfHeld() {
+        val lock = wakeLock ?: return
+        if (!lock.isHeld) {
+            return
+        }
+        runCatching {
+            lock.release()
+            Log.i(TAG, "WakeLock released")
+        }.onFailure { error ->
+            Log.e(TAG, "Failed to release WakeLock", error)
+        }
     }
 
     private fun createNotificationChannel() {
