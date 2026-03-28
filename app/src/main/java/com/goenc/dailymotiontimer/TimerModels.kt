@@ -9,7 +9,7 @@ enum class WalkingPhase(val label: String, val announcement: String) {
     fun next(): WalkingPhase = if (this == Slow) Fast else Slow
 }
 
-val PHASE_DURATION_OPTIONS_SECONDS = listOf(30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330)
+val PHASE_DURATION_OPTIONS_SECONDS = listOf(10, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330)
 const val DEFAULT_PHASE_DURATION_SECONDS = 180
 
 data class TimerUiState(

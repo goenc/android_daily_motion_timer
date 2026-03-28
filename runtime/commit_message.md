@@ -1,7 +1,5 @@
-タイマー管理を単一セッション基準へ再構成
+フェーズ時間選択肢に10秒を追加
 
-・セッション開始時刻と累計停止時間から現在フェーズと残り時間を算出する構造へ整理
-・サービスの毎秒 ticker を廃止して次回フェーズ切替だけを予約する進行管理へ変更
-・通知文言を固定化して残り時間と経過時間の表示および毎秒更新を廃止
-・画面表示中のみ elapsedRealtime 基準で表示値を再計算するよう調整
-・Android Studio 同梱 JBR を使った assembleDebug 成功を確認
+・PHASE_DURATION_OPTIONS_SECONDS に 10 秒を追加して既存の 30 秒以上の選択肢を維持
+・DEFAULT_PHASE_DURATION_SECONDS は 180 秒のまま変更なし
+・assembleDebug を実行してデバッグビルド成功を確認
