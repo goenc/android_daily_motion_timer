@@ -7,7 +7,7 @@ import android.media.AudioManager
 import android.media.MediaPlayer
 import android.os.Build
 import android.os.Handler
-import android.os.Looper
+import android.os.HandlerThread
 import android.util.Log
 
 internal class PhaseAudioPlayer(context: Context) {
@@ -17,39 +17,11 @@ internal class PhaseAudioPlayer(context: Context) {
         .setUsage(AudioAttributes.USAGE_ASSISTANCE_ACCESSIBILITY)
         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
         .build()
-    private val stateLock = Any()
+    private val audioThread = HandlerThread("PhaseAudioPlayer").apply { start() }
+    private val audioHandler = Handler(audioThread.looper)
     private val focusChangeListener = AudioManager.OnAudioFocusChangeListener { focusChange ->
-        synchronized(stateLock) {
-            when (focusChange) {
-                AudioManager.AUDIOFOCUS_GAIN -> {
-                    hasAudioFocus = true
-                    if (pendingPhase != null) {
-                        pendingPlaybackRetryCount = 0
-                        cancelPendingPlaybackRetryLocked()
-                        Log.i(TAG, "Audio focus regained, retrying queued phase cue")
-                        startPendingPlayback()
-                    }
-                }
-                AudioManager.AUDIOFOCUS_LOSS,
-                AudioManager.AUDIOFOCUS_LOSS_TRANSIENT,
-                AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK
-                -> {
-                    val interruptedPhase = currentPlaybackPhase ?: pendingPhase
-                    if (interruptedPhase != null) {
-                        pendingPhase = interruptedPhase
-                        pendingPlaybackRetryCount = 0
-                    }
-                    hasAudioFocus = false
-                    cancelPendingPlaybackRetryLocked()
-                    Log.w(
-                        TAG,
-                        "Audio focus lost change=$focusChange phase=${interruptedPhase?.name ?: "unknown"}",
-                    )
-                    mediaPlayer?.let { player ->
-                        stopPlayer(player, shouldAbandonAudioFocus = false)
-                    }
-                }
-            }
+        if (!isReleased) {
+            audioHandler.post { handleAudioFocusChange(focusChange) }
         }
     }
 
@@ -58,31 +30,46 @@ internal class PhaseAudioPlayer(context: Context) {
     private var hasAudioFocus = false
     private var pendingPhase: WalkingPhase? = null
     private var currentPlaybackPhase: WalkingPhase? = null
-    private val retryHandler = Handler(Looper.getMainLooper())
     private var pendingPlaybackRetryRunnable: Runnable? = null
     private var pendingPlaybackRetryCount = 0
+    @Volatile
+    private var isReleased = false
 
     fun play(phase: WalkingPhase) {
-        synchronized(stateLock) {
+        if (isReleased) {
+            Log.w(TAG, "Ignoring ${phase.name} cue because audio player is released")
+            return
+        }
+        audioHandler.post {
             pendingPhase = phase
             pendingPlaybackRetryCount = 0
             cancelPendingPlaybackRetryLocked()
             mediaPlayer?.let { player ->
+                Log.i(TAG, "Replacing ${currentPlaybackPhase?.name ?: "unknown"} cue with ${phase.name}")
                 stopPlayer(player, shouldAbandonAudioFocus = false)
             }
+            Log.i(TAG, "Queued ${phase.name} cue playback")
             startPendingPlayback()
         }
     }
 
     fun stop() {
-        synchronized(stateLock) {
-            pendingPhase = null
-            pendingPlaybackRetryCount = 0
-            cancelPendingPlaybackRetryLocked()
-            currentPlaybackPhase = null
-            mediaPlayer?.let { player ->
-                stopPlayer(player, shouldAbandonAudioFocus = true)
-            } ?: abandonAudioFocus()
+        if (isReleased) {
+            return
+        }
+        audioHandler.post {
+            stopInternal(reason = "stop")
+        }
+    }
+
+    fun release() {
+        if (isReleased) {
+            return
+        }
+        isReleased = true
+        audioHandler.post {
+            stopInternal(reason = "release")
+            audioThread.quitSafely()
         }
     }
 
@@ -111,33 +98,44 @@ internal class PhaseAudioPlayer(context: Context) {
                     descriptor.length,
                 )
             }
+            player.setOnPreparedListener { preparedPlayer ->
+                audioHandler.post {
+                    if (mediaPlayer !== preparedPlayer) {
+                        Log.i(TAG, "Ignoring prepared callback for stale ${phase.name} cue")
+                        return@post
+                    }
+                    runCatching {
+                        Log.i(TAG, "Starting ${phase.name} cue playback")
+                        preparedPlayer.start()
+                    }.onFailure { error ->
+                        Log.e(TAG, "Failed to start prepared ${phase.name} cue", error)
+                        releasePlayer(preparedPlayer, shouldAbandonAudioFocus = true)
+                    }
+                }
+            }
             player.setOnCompletionListener { completedPlayer ->
-                synchronized(stateLock) {
+                audioHandler.post {
                     Log.i(TAG, "Completed ${phase.name} cue playback")
                     releasePlayer(completedPlayer, shouldAbandonAudioFocus = true)
                 }
             }
             player.setOnErrorListener { erroredPlayer, what, extra ->
-                synchronized(stateLock) {
-                    Log.e(
-                        TAG,
-                        "Failed to play ${phase.name} cue what=$what extra=$extra",
-                    )
+                audioHandler.post {
+                    Log.e(TAG, "Failed to play ${phase.name} cue what=$what extra=$extra")
                     releasePlayer(erroredPlayer, shouldAbandonAudioFocus = true)
                 }
                 true
             }
-            player.prepare()
-            Log.i(TAG, "Starting ${phase.name} cue playback")
-            player.start()
+            Log.i(TAG, "Preparing ${phase.name} cue playback asynchronously")
+            player.prepareAsync()
         }.onFailure { error ->
-            Log.e(TAG, "Unable to start ${phase.name} cue playback", error)
+            Log.e(TAG, "Unable to prepare ${phase.name} cue playback", error)
             releasePlayer(player, shouldAbandonAudioFocus = true)
         }
     }
 
     private fun schedulePendingPlaybackRetryLocked(phase: WalkingPhase, result: Int) {
-        if (pendingPhase != phase) {
+        if (pendingPhase != phase || isReleased) {
             return
         }
 
@@ -149,60 +147,26 @@ internal class PhaseAudioPlayer(context: Context) {
             pendingPhase = null
             pendingPlaybackRetryCount = 0
             cancelPendingPlaybackRetryLocked()
+            abandonAudioFocus()
             return
         }
 
         pendingPlaybackRetryCount += 1
         Log.i(
             TAG,
-            "Retrying ${phase.name} cue after focus result=$result attempt=$pendingPlaybackRetryCount",
+            "Scheduling retry for ${phase.name} cue result=$result attempt=$pendingPlaybackRetryCount",
         )
         val retryRunnable = Runnable {
-            synchronized(stateLock) {
-                if (pendingPhase != phase) {
-                    pendingPlaybackRetryRunnable = null
-                    return@synchronized
-                }
+            if (pendingPhase != phase || isReleased) {
                 pendingPlaybackRetryRunnable = null
-                startPendingPlayback()
+                return@Runnable
             }
+            pendingPlaybackRetryRunnable = null
+            Log.i(TAG, "Retrying ${phase.name} cue playback attempt=$pendingPlaybackRetryCount")
+            startPendingPlayback()
         }
         pendingPlaybackRetryRunnable = retryRunnable
-        retryHandler.postDelayed(retryRunnable, PENDING_PLAYBACK_RETRY_INTERVAL_MILLIS)
-    }
-
-    private fun cancelPendingPlaybackRetryLocked() {
-        pendingPlaybackRetryRunnable?.let { retryHandler.removeCallbacks(it) }
-        pendingPlaybackRetryRunnable = null
-    }
-
-    private fun stopPlayer(player: MediaPlayer, shouldAbandonAudioFocus: Boolean) {
-        runCatching {
-            if (player.isPlaying) {
-                player.stop()
-            }
-        }.onFailure { error ->
-            Log.w(TAG, "Failed to stop phase cue playback", error)
-        }
-        releasePlayer(player, shouldAbandonAudioFocus)
-    }
-
-    private fun releasePlayer(player: MediaPlayer, shouldAbandonAudioFocus: Boolean) {
-        if (mediaPlayer === player) {
-            mediaPlayer = null
-        }
-        if (currentPlaybackPhase != null) {
-            currentPlaybackPhase = null
-        }
-        runCatching {
-            player.reset()
-        }
-        runCatching {
-            player.release()
-        }
-        if (shouldAbandonAudioFocus) {
-            abandonAudioFocus()
-        }
+        audioHandler.postDelayed(retryRunnable, PENDING_PLAYBACK_RETRY_INTERVAL_MILLIS)
     }
 
     private fun requestAudioFocus(): Int {
@@ -243,6 +207,86 @@ internal class PhaseAudioPlayer(context: Context) {
         return result
     }
 
+    private fun handleAudioFocusChange(focusChange: Int) {
+        when (focusChange) {
+            AudioManager.AUDIOFOCUS_GAIN -> {
+                hasAudioFocus = true
+                Log.i(TAG, "Audio focus regained")
+                if (pendingPhase != null) {
+                    pendingPlaybackRetryCount = 0
+                    cancelPendingPlaybackRetryLocked()
+                    startPendingPlayback()
+                }
+            }
+            AudioManager.AUDIOFOCUS_LOSS,
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT,
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK
+            -> {
+                val interruptedPhase = currentPlaybackPhase ?: pendingPhase
+                if (interruptedPhase != null) {
+                    pendingPhase = interruptedPhase
+                    pendingPlaybackRetryCount = 0
+                }
+                hasAudioFocus = false
+                cancelPendingPlaybackRetryLocked()
+                Log.w(
+                    TAG,
+                    "Audio focus lost change=$focusChange phase=${interruptedPhase?.name ?: "unknown"}",
+                )
+                mediaPlayer?.let { player ->
+                    stopPlayer(player, shouldAbandonAudioFocus = false)
+                }
+            }
+        }
+    }
+
+    private fun cancelPendingPlaybackRetryLocked() {
+        pendingPlaybackRetryRunnable?.let { audioHandler.removeCallbacks(it) }
+        pendingPlaybackRetryRunnable = null
+    }
+
+    private fun stopPlayer(player: MediaPlayer, shouldAbandonAudioFocus: Boolean) {
+        runCatching {
+            if (player.isPlaying) {
+                player.stop()
+            }
+        }.onFailure { error ->
+            Log.w(TAG, "Failed to stop phase cue playback", error)
+        }
+        releasePlayer(player, shouldAbandonAudioFocus)
+    }
+
+    private fun releasePlayer(player: MediaPlayer, shouldAbandonAudioFocus: Boolean) {
+        if (mediaPlayer === player) {
+            mediaPlayer = null
+        }
+        currentPlaybackPhase = null
+        runCatching {
+            player.reset()
+        }
+        runCatching {
+            player.release()
+        }
+        if (shouldAbandonAudioFocus) {
+            abandonAudioFocus()
+        }
+    }
+
+    private fun stopInternal(reason: String) {
+        val phase = currentPlaybackPhase ?: pendingPhase
+        pendingPhase = null
+        pendingPlaybackRetryCount = 0
+        cancelPendingPlaybackRetryLocked()
+        currentPlaybackPhase = null
+        mediaPlayer?.let { player ->
+            Log.i(TAG, "Stopping ${phase?.name ?: "queued"} cue processing reason=$reason")
+            stopPlayer(player, shouldAbandonAudioFocus = true)
+        } ?: run {
+            Log.i(TAG, "Stopping queued cue processing reason=$reason")
+            abandonAudioFocus()
+        }
+    }
+
     private fun abandonAudioFocus() {
         if (!hasAudioFocus || audioManager == null) {
             audioFocusRequest = null
@@ -258,6 +302,7 @@ internal class PhaseAudioPlayer(context: Context) {
             @Suppress("DEPRECATION")
             audioManager.abandonAudioFocus(focusChangeListener)
         }
+        Log.i(TAG, "Audio focus abandoned")
         audioFocusRequest = null
         hasAudioFocus = false
     }
