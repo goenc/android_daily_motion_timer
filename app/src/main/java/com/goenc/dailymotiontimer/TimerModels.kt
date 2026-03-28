@@ -53,7 +53,9 @@ data class PersistedTimerState(
     val isPaused: Boolean,
     val notificationPhase: WalkingPhase,
     val notificationRemainingSeconds: Int,
+    val notificationPhaseElapsedMillis: Long = -1L,
     val notificationElapsedSeconds: Int,
+    val notificationTotalElapsedMillis: Long = -1L,
     val notificationIsRunning: Boolean,
     val notificationIsPaused: Boolean,
 ) {
@@ -117,15 +119,12 @@ data class PersistedTimerState(
                 nowElapsedRealtime = nowElapsedRealtime,
                 nowWallClockMillis = nowWallClockMillis,
             )
-            val notificationPhaseElapsedMillis = elapsedMillisInPhase(
-                phase = notificationPhase,
-                remainingSeconds = notificationRemainingSeconds,
-                fastPhaseDurationSeconds = fastDuration,
-                slowPhaseDurationSeconds = slowDuration,
-            )
             val phaseProgress = advancePhaseProgressMillis(
                 startingPhase = notificationPhase,
-                startingPhaseElapsedMillis = notificationPhaseElapsedMillis,
+                startingPhaseElapsedMillis = notificationPhaseElapsedMillis(
+                    fastPhaseDurationSeconds = fastDuration,
+                    slowPhaseDurationSeconds = slowDuration,
+                ),
                 additionalElapsedMillis = deltaMillis,
                 fastPhaseDurationSeconds = fastDuration,
                 slowPhaseDurationSeconds = slowDuration,
@@ -139,7 +138,7 @@ data class PersistedTimerState(
                     slowPhaseDurationSeconds = slowDuration,
                 ),
                 elapsedSeconds = elapsedSecondsFromMillis(
-                    notificationElapsedSeconds.toLong() * 1_000L + deltaMillis,
+                    notificationTotalElapsedMillis() + deltaMillis,
                 ),
                 fastPhaseDurationSeconds = fastDuration,
                 slowPhaseDurationSeconds = slowDuration,
@@ -153,16 +152,47 @@ data class PersistedTimerState(
     fun notificationUiState(): TimerUiState {
         val fastDuration = normalizePhaseDurationSeconds(fastPhaseDurationSeconds)
         val slowDuration = normalizePhaseDurationSeconds(slowPhaseDurationSeconds)
+        val phaseElapsedMillis = notificationPhaseElapsedMillis(
+            fastPhaseDurationSeconds = fastDuration,
+            slowPhaseDurationSeconds = slowDuration,
+        )
         return TimerUiState(
             currentPhase = notificationPhase,
-            remainingSeconds = notificationRemainingSeconds,
-            elapsedSeconds = notificationElapsedSeconds,
+            remainingSeconds = remainingSecondsForPhaseMillis(
+                phase = notificationPhase,
+                phaseElapsedMillis = phaseElapsedMillis,
+                fastPhaseDurationSeconds = fastDuration,
+                slowPhaseDurationSeconds = slowDuration,
+            ),
+            elapsedSeconds = elapsedSecondsFromMillis(notificationTotalElapsedMillis()),
             fastPhaseDurationSeconds = fastDuration,
             slowPhaseDurationSeconds = slowDuration,
             isVibrationEnabled = isVibrationEnabled,
             isRunning = notificationIsRunning,
             isPaused = notificationIsPaused,
         )
+    }
+
+    fun notificationPhaseElapsedMillis(
+        fastPhaseDurationSeconds: Int = normalizePhaseDurationSeconds(this.fastPhaseDurationSeconds),
+        slowPhaseDurationSeconds: Int = normalizePhaseDurationSeconds(this.slowPhaseDurationSeconds),
+    ): Long {
+        if (notificationPhaseElapsedMillis >= 0L) {
+            return notificationPhaseElapsedMillis
+        }
+        return elapsedMillisInPhase(
+            phase = notificationPhase,
+            remainingSeconds = notificationRemainingSeconds,
+            fastPhaseDurationSeconds = fastPhaseDurationSeconds,
+            slowPhaseDurationSeconds = slowPhaseDurationSeconds,
+        )
+    }
+
+    fun notificationTotalElapsedMillis(): Long {
+        if (notificationTotalElapsedMillis >= 0L) {
+            return notificationTotalElapsedMillis
+        }
+        return notificationElapsedSeconds.toLong() * 1_000L
     }
 
     private fun resolveElapsedDeltaMillis(
@@ -346,7 +376,14 @@ internal fun TimerUiState.toPersistedState(
         isPaused = isPaused,
         notificationPhase = currentPhase,
         notificationRemainingSeconds = remainingSeconds,
+        notificationPhaseElapsedMillis = elapsedMillisInPhase(
+            phase = currentPhase,
+            remainingSeconds = remainingSeconds,
+            fastPhaseDurationSeconds = normalizedFastDuration,
+            slowPhaseDurationSeconds = normalizedSlowDuration,
+        ),
         notificationElapsedSeconds = elapsedSeconds,
+        notificationTotalElapsedMillis = elapsedSeconds.toLong() * 1_000L,
         notificationIsRunning = isRunning,
         notificationIsPaused = isPaused,
     )

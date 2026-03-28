@@ -20,7 +20,9 @@ internal object WalkingTimerStateStore {
     private const val KEY_IS_PAUSED = "is_paused"
     private const val KEY_NOTIFICATION_PHASE = "notification_phase"
     private const val KEY_NOTIFICATION_REMAINING_SECONDS = "notification_remaining_seconds"
+    private const val KEY_NOTIFICATION_PHASE_ELAPSED_MILLIS = "notification_phase_elapsed_millis"
     private const val KEY_NOTIFICATION_ELAPSED_SECONDS = "notification_elapsed_seconds"
+    private const val KEY_NOTIFICATION_TOTAL_ELAPSED_MILLIS = "notification_total_elapsed_millis"
     private const val KEY_NOTIFICATION_IS_RUNNING = "notification_is_running"
     private const val KEY_NOTIFICATION_IS_PAUSED = "notification_is_paused"
 
@@ -30,8 +32,21 @@ internal object WalkingTimerStateStore {
             return null
         }
 
+        val currentPhase = prefs.readPhase(KEY_CURRENT_PHASE, WalkingPhase.Fast)
+        val fastPhaseDurationSeconds = normalizePhaseDurationSeconds(
+            prefs.getInt(KEY_FAST_PHASE_DURATION_SECONDS, DEFAULT_PHASE_DURATION_SECONDS),
+        )
+        val slowPhaseDurationSeconds = normalizePhaseDurationSeconds(
+            prefs.getInt(KEY_SLOW_PHASE_DURATION_SECONDS, DEFAULT_PHASE_DURATION_SECONDS),
+        )
+        val notificationPhase = prefs.readPhase(KEY_NOTIFICATION_PHASE, WalkingPhase.Fast)
+        val notificationRemainingSeconds = prefs.getInt(
+            KEY_NOTIFICATION_REMAINING_SECONDS,
+            DEFAULT_PHASE_DURATION_SECONDS,
+        )
+
         return PersistedTimerState(
-            currentPhase = prefs.readPhase(KEY_CURRENT_PHASE, WalkingPhase.Fast),
+            currentPhase = currentPhase,
             totalElapsedBeforeRunMillis = prefs.getLongOrFallbackSeconds(
                 longKey = KEY_TOTAL_ELAPSED_BEFORE_RUN_MILLIS,
                 secondsKey = KEY_TOTAL_ELAPSED_BEFORE_RUN_SECONDS,
@@ -40,12 +55,8 @@ internal object WalkingTimerStateStore {
                 longKey = KEY_PHASE_ELAPSED_BEFORE_RUN_MILLIS,
                 secondsKey = KEY_PHASE_ELAPSED_BEFORE_RUN_SECONDS,
             ),
-            fastPhaseDurationSeconds = normalizePhaseDurationSeconds(
-                prefs.getInt(KEY_FAST_PHASE_DURATION_SECONDS, DEFAULT_PHASE_DURATION_SECONDS),
-            ),
-            slowPhaseDurationSeconds = normalizePhaseDurationSeconds(
-                prefs.getInt(KEY_SLOW_PHASE_DURATION_SECONDS, DEFAULT_PHASE_DURATION_SECONDS),
-            ),
+            fastPhaseDurationSeconds = fastPhaseDurationSeconds,
+            slowPhaseDurationSeconds = slowPhaseDurationSeconds,
             isVibrationEnabled = prefs.getBoolean(KEY_IS_VIBRATION_ENABLED, true),
             runStartedAtElapsedRealtime = prefs.getLong(KEY_RUN_STARTED_AT_ELAPSED_REALTIME, 0L),
             phaseStartedAtElapsedRealtime = prefs.getLong(KEY_PHASE_STARTED_AT_ELAPSED_REALTIME, 0L),
@@ -53,12 +64,22 @@ internal object WalkingTimerStateStore {
             persistedAtWallClockMillis = prefs.getLong(KEY_PERSISTED_AT_WALL_CLOCK_MILLIS, 0L),
             isRunning = prefs.getBoolean(KEY_IS_RUNNING, false),
             isPaused = prefs.getBoolean(KEY_IS_PAUSED, false),
-            notificationPhase = prefs.readPhase(KEY_NOTIFICATION_PHASE, WalkingPhase.Fast),
-            notificationRemainingSeconds = prefs.getInt(
-                KEY_NOTIFICATION_REMAINING_SECONDS,
-                DEFAULT_PHASE_DURATION_SECONDS,
+            notificationPhase = notificationPhase,
+            notificationRemainingSeconds = notificationRemainingSeconds,
+            notificationPhaseElapsedMillis = prefs.getLongOrFallback(
+                key = KEY_NOTIFICATION_PHASE_ELAPSED_MILLIS,
+                fallbackValue = elapsedMillisInPhase(
+                    phase = notificationPhase,
+                    remainingSeconds = notificationRemainingSeconds,
+                    fastPhaseDurationSeconds = fastPhaseDurationSeconds,
+                    slowPhaseDurationSeconds = slowPhaseDurationSeconds,
+                ),
             ),
             notificationElapsedSeconds = prefs.getInt(KEY_NOTIFICATION_ELAPSED_SECONDS, 0),
+            notificationTotalElapsedMillis = prefs.getLongOrFallbackSeconds(
+                longKey = KEY_NOTIFICATION_TOTAL_ELAPSED_MILLIS,
+                secondsKey = KEY_NOTIFICATION_ELAPSED_SECONDS,
+            ),
             notificationIsRunning = prefs.getBoolean(KEY_NOTIFICATION_IS_RUNNING, false),
             notificationIsPaused = prefs.getBoolean(KEY_NOTIFICATION_IS_PAUSED, false),
         )
@@ -89,8 +110,27 @@ internal object WalkingTimerStateStore {
             .putBoolean(KEY_IS_RUNNING, state.isRunning)
             .putBoolean(KEY_IS_PAUSED, state.isPaused)
             .putString(KEY_NOTIFICATION_PHASE, state.notificationPhase.name)
-            .putInt(KEY_NOTIFICATION_REMAINING_SECONDS, state.notificationRemainingSeconds)
-            .putInt(KEY_NOTIFICATION_ELAPSED_SECONDS, state.notificationElapsedSeconds)
+            .putInt(
+                KEY_NOTIFICATION_REMAINING_SECONDS,
+                remainingSecondsForPhaseMillis(
+                    phase = state.notificationPhase,
+                    phaseElapsedMillis = state.notificationPhaseElapsedMillis(),
+                    fastPhaseDurationSeconds = state.fastPhaseDurationSeconds,
+                    slowPhaseDurationSeconds = state.slowPhaseDurationSeconds,
+                ),
+            )
+            .putLong(
+                KEY_NOTIFICATION_PHASE_ELAPSED_MILLIS,
+                state.notificationPhaseElapsedMillis(),
+            )
+            .putInt(
+                KEY_NOTIFICATION_ELAPSED_SECONDS,
+                elapsedSecondsFromMillis(state.notificationTotalElapsedMillis()),
+            )
+            .putLong(
+                KEY_NOTIFICATION_TOTAL_ELAPSED_MILLIS,
+                state.notificationTotalElapsedMillis(),
+            )
             .putBoolean(KEY_NOTIFICATION_IS_RUNNING, state.notificationIsRunning)
             .putBoolean(KEY_NOTIFICATION_IS_PAUSED, state.notificationIsPaused)
             .apply()
@@ -120,5 +160,15 @@ internal object WalkingTimerStateStore {
             return getLong(longKey, 0L)
         }
         return getInt(secondsKey, 0).toLong() * 1_000L
+    }
+
+    private fun android.content.SharedPreferences.getLongOrFallback(
+        key: String,
+        fallbackValue: Long,
+    ): Long {
+        if (contains(key)) {
+            return getLong(key, fallbackValue)
+        }
+        return fallbackValue
     }
 }

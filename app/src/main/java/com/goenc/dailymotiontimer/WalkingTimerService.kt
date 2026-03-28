@@ -52,6 +52,8 @@ class WalkingTimerService : Service() {
     private var lastObservedPhase = WalkingPhase.Fast
     private var pendingRestoredAnnouncementPhase: WalkingPhase? = null
     private var wakeLock: PowerManager.WakeLock? = null
+    private var notificationTotalElapsedMillis = 0L
+    private var notificationPhaseElapsedMillis = 0L
 
     override fun onCreate() {
         super.onCreate()
@@ -82,8 +84,9 @@ class WalkingTimerService : Service() {
 
     override fun onDestroy() {
         tickerJob?.cancel()
-        if (currentUiState().isActive) {
-            persistState(currentUiState())
+        val state = currentUiState()
+        if (state.isActive) {
+            persistState(state)
         }
         releaseWakeLockIfHeld()
         phaseAudioPlayer.stop()
@@ -150,6 +153,7 @@ class WalkingTimerService : Service() {
         releaseWakeLockIfHeld()
         tickerJob?.cancel()
         tickerJob = null
+        rememberNotificationSnapshot(snapshot)
         val pausedState = state.copy(isRunning = false, isPaused = true)
         lastObservedPhase = pausedState.currentPhase
         showNotification(pausedState, promoteToForeground = !hasForegroundNotification)
@@ -190,12 +194,18 @@ class WalkingTimerService : Service() {
 
     private fun calculateSnapshot(now: Long, announceTransitions: Boolean): TimerUiState {
         val snapshot = calculatePreciseSnapshot(now)
+        rememberNotificationSnapshot(snapshot)
         val state = snapshot.uiState
         if (announceTransitions && state.currentPhase != lastObservedPhase) {
             announcePhaseTransition(state.currentPhase)
         }
         lastObservedPhase = state.currentPhase
         return state
+    }
+
+    private fun rememberNotificationSnapshot(snapshot: PreciseTimerSnapshot) {
+        notificationTotalElapsedMillis = snapshot.totalElapsedMillis
+        notificationPhaseElapsedMillis = snapshot.phaseElapsedMillis
     }
 
     private fun calculatePreciseSnapshot(now: Long): PreciseTimerSnapshot {
@@ -406,23 +416,16 @@ class WalkingTimerService : Service() {
     private fun restorePersistedState(): TimerUiState? {
         val persistedState = WalkingTimerStateStore.load(this) ?: return null
         val nowElapsedRealtime = SystemClock.elapsedRealtime()
-        val restoredState = persistedState.toUiState(
+        val provisionalRestoredState = persistedState.toUiState(
             nowElapsedRealtime = nowElapsedRealtime,
             nowWallClockMillis = System.currentTimeMillis(),
         )
 
-        fastPhaseDurationSeconds = restoredState.fastPhaseDurationSeconds
-        slowPhaseDurationSeconds = restoredState.slowPhaseDurationSeconds
-        isVibrationEnabled = restoredState.isVibrationEnabled
-        isRunning = restoredState.isRunning
-        isPaused = restoredState.isPaused
-        pendingRestoredAnnouncementPhase =
-            if (restoredState.isRunning && persistedState.notificationPhase != restoredState.currentPhase) {
-                restoredState.currentPhase
-            } else {
-                null
-            }
-        lastObservedPhase = restoredState.currentPhase
+        fastPhaseDurationSeconds = provisionalRestoredState.fastPhaseDurationSeconds
+        slowPhaseDurationSeconds = provisionalRestoredState.slowPhaseDurationSeconds
+        isVibrationEnabled = provisionalRestoredState.isVibrationEnabled
+        isRunning = provisionalRestoredState.isRunning
+        isPaused = provisionalRestoredState.isPaused
 
         val canReuseStoredRealtimeBase =
             persistedState.isRunning &&
@@ -438,15 +441,13 @@ class WalkingTimerService : Service() {
             runStartedAtElapsedRealtime = persistedState.runStartedAtElapsedRealtime
             phaseStartedAtElapsedRealtime = persistedState.phaseStartedAtElapsedRealtime
         } else {
-            currentPhase = restoredState.currentPhase
-            totalElapsedBeforeRunMillis = restoredState.elapsedSeconds.toLong() * 1_000L
-            phaseElapsedBeforeRunMillis = elapsedMillisInPhase(
-                phase = restoredState.currentPhase,
-                remainingSeconds = restoredState.remainingSeconds,
+            currentPhase = provisionalRestoredState.currentPhase
+            totalElapsedBeforeRunMillis = persistedState.notificationTotalElapsedMillis()
+            phaseElapsedBeforeRunMillis = persistedState.notificationPhaseElapsedMillis(
                 fastPhaseDurationSeconds = fastPhaseDurationSeconds,
                 slowPhaseDurationSeconds = slowPhaseDurationSeconds,
             )
-            if (restoredState.isRunning) {
+            if (provisionalRestoredState.isRunning) {
                 runStartedAtElapsedRealtime = nowElapsedRealtime
                 phaseStartedAtElapsedRealtime = nowElapsedRealtime
             } else {
@@ -455,10 +456,17 @@ class WalkingTimerService : Service() {
             }
         }
 
-        if (!restoredState.isRunning) {
+        if (!provisionalRestoredState.isRunning) {
             runStartedAtElapsedRealtime = 0L
             phaseStartedAtElapsedRealtime = 0L
         }
+        val restoredState = calculateSnapshot(nowElapsedRealtime, announceTransitions = false)
+        pendingRestoredAnnouncementPhase =
+            if (restoredState.isRunning && persistedState.notificationPhase != restoredState.currentPhase) {
+                restoredState.currentPhase
+            } else {
+                null
+            }
         return restoredState
     }
 
@@ -489,7 +497,9 @@ class WalkingTimerService : Service() {
                 isPaused = isPaused,
                 notificationPhase = state.currentPhase,
                 notificationRemainingSeconds = state.remainingSeconds,
+                notificationPhaseElapsedMillis = notificationPhaseElapsedMillis,
                 notificationElapsedSeconds = state.elapsedSeconds,
+                notificationTotalElapsedMillis = notificationTotalElapsedMillis,
                 notificationIsRunning = state.isRunning,
                 notificationIsPaused = state.isPaused,
             ),
@@ -512,6 +522,8 @@ class WalkingTimerService : Service() {
         isVibrationEnabled = WalkingTimerStateStore.load(this)?.isVibrationEnabled ?: true
         isRunning = false
         isPaused = false
+        notificationTotalElapsedMillis = 0L
+        notificationPhaseElapsedMillis = 0L
         pendingRestoredAnnouncementPhase = null
         lastObservedPhase = WalkingPhase.Fast
     }
