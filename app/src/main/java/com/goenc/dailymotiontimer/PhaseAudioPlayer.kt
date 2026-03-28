@@ -2,29 +2,20 @@ package com.goenc.dailymotiontimer
 
 import android.content.Context
 import android.media.AudioAttributes
-import android.media.AudioFocusRequest
-import android.media.AudioManager
 import android.media.MediaMetadataRetriever
 import android.media.SoundPool
-import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import android.util.Log
 
 internal class PhaseAudioPlayer(context: Context) {
     private val appContext = context.applicationContext
-    private val audioManager = appContext.getSystemService(AudioManager::class.java)
     private val audioAttributes = AudioAttributes.Builder()
         .setUsage(AudioAttributes.USAGE_ASSISTANCE_ACCESSIBILITY)
         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
         .build()
     private val audioThread = HandlerThread("PhaseAudioPlayer").apply { start() }
     private val audioHandler = Handler(audioThread.looper)
-    private val focusChangeListener = AudioManager.OnAudioFocusChangeListener { focusChange ->
-        if (!isReleased) {
-            audioHandler.post { handleAudioFocusChange(focusChange) }
-        }
-    }
     private val soundPool =
         SoundPool.Builder()
             .setAudioAttributes(audioAttributes)
@@ -44,14 +35,12 @@ internal class PhaseAudioPlayer(context: Context) {
     private val slowPlaybackCleanupDelayMillis =
         resolvePlaybackCleanupDelayMillis(R.raw.slow_phase, WalkingPhase.Slow)
 
-    private var audioFocusRequest: AudioFocusRequest? = null
     private var isFastLoaded = false
     private var isSlowLoaded = false
     private var announcementVolume = DEFAULT_ANNOUNCEMENT_VOLUME
     private var currentStreamId = 0
     private var pendingPhase: WalkingPhase? = null
     private var pendingPlaybackCompleteRunnable: Runnable? = null
-    private var hasAudioFocus = false
     @Volatile
     private var isReleased = false
 
@@ -70,10 +59,7 @@ internal class PhaseAudioPlayer(context: Context) {
         audioHandler.post {
             Log.i(TAG, "Received ${phase.name} cue playback request")
             pendingPhase = phase
-            stopCurrentStreamLocked(
-                reason = "replace with ${phase.name}",
-                shouldAbandonAudioFocus = false,
-            )
+            stopCurrentStreamLocked(reason = "replace with ${phase.name}")
             startPendingPlayback()
         }
     }
@@ -159,13 +145,6 @@ internal class PhaseAudioPlayer(context: Context) {
             return
         }
 
-        val focusResult = requestAudioFocus()
-        if (focusResult != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
-            Log.w(TAG, "Skipping ${phase.name} cue because audio focus request failed result=$focusResult")
-            pendingPhase = null
-            return
-        }
-
         val streamId =
             soundPool.play(
                 phase.soundId(),
@@ -178,7 +157,6 @@ internal class PhaseAudioPlayer(context: Context) {
         if (streamId == 0) {
             Log.w(TAG, "Failed to start ${phase.name} cue playback")
             pendingPhase = null
-            abandonAudioFocus()
             return
         }
 
@@ -199,96 +177,9 @@ internal class PhaseAudioPlayer(context: Context) {
                 pendingPhase = null
             }
             Log.i(TAG, "Completed ${phase.name} cue playback streamId=$streamId")
-            abandonAudioFocus()
         }
         pendingPlaybackCompleteRunnable = completionRunnable
         audioHandler.postDelayed(completionRunnable, phase.playbackCleanupDelayMillis())
-    }
-
-    private fun requestAudioFocus(): Int {
-        if (audioManager == null) {
-            Log.w(TAG, "AudioManager was unavailable")
-            hasAudioFocus = false
-            return AudioManager.AUDIOFOCUS_REQUEST_FAILED
-        }
-
-        if (hasAudioFocus) {
-            Log.i(TAG, "Audio focus already held")
-            return AudioManager.AUDIOFOCUS_REQUEST_GRANTED
-        }
-
-        val result =
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                val request =
-                    audioFocusRequest
-                        ?: AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
-                            .setAudioAttributes(audioAttributes)
-                            .setWillPauseWhenDucked(true)
-                            .setOnAudioFocusChangeListener(focusChangeListener)
-                            .build()
-                            .also { audioFocusRequest = it }
-                audioManager.requestAudioFocus(request)
-            } else {
-                @Suppress("DEPRECATION")
-                audioManager.requestAudioFocus(
-                    focusChangeListener,
-                    AudioManager.STREAM_MUSIC,
-                    AudioManager.AUDIOFOCUS_GAIN_TRANSIENT,
-                )
-            }
-
-        hasAudioFocus = result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
-        when (result) {
-            AudioManager.AUDIOFOCUS_REQUEST_GRANTED ->
-                Log.i(TAG, "Audio focus request granted")
-
-            AudioManager.AUDIOFOCUS_REQUEST_DELAYED ->
-                Log.w(TAG, "Audio focus request delayed")
-
-            else ->
-                Log.w(TAG, "Audio focus request failed result=$result")
-        }
-        return result
-    }
-
-    private fun handleAudioFocusChange(focusChange: Int) {
-        when (focusChange) {
-            AudioManager.AUDIOFOCUS_GAIN -> {
-                hasAudioFocus = true
-                Log.i(TAG, "Audio focus regained")
-                if (pendingPhase != null && currentStreamId == 0) {
-                    startPendingPlayback()
-                }
-            }
-
-            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT,
-            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK,
-            -> {
-                hasAudioFocus = false
-                Log.w(
-                    TAG,
-                    "Audio focus lost transiently change=$focusChange pending=${pendingPhase?.name ?: "none"}",
-                )
-                stopCurrentStreamLocked(
-                    reason = "audio focus transient loss",
-                    shouldAbandonAudioFocus = false,
-                )
-            }
-
-            AudioManager.AUDIOFOCUS_LOSS -> {
-                hasAudioFocus = false
-                Log.w(
-                    TAG,
-                    "Audio focus lost permanently pending=${pendingPhase?.name ?: "none"}",
-                )
-                stopCurrentStreamLocked(
-                    reason = "audio focus loss",
-                    shouldAbandonAudioFocus = false,
-                )
-                pendingPhase = null
-                abandonAudioFocus()
-            }
-        }
     }
 
     private fun cancelPendingPlaybackCompleteLocked() {
@@ -296,7 +187,7 @@ internal class PhaseAudioPlayer(context: Context) {
         pendingPlaybackCompleteRunnable = null
     }
 
-    private fun stopCurrentStreamLocked(reason: String, shouldAbandonAudioFocus: Boolean) {
+    private fun stopCurrentStreamLocked(reason: String) {
         cancelPendingPlaybackCompleteLocked()
         if (currentStreamId != 0) {
             runCatching {
@@ -307,37 +198,13 @@ internal class PhaseAudioPlayer(context: Context) {
             Log.i(TAG, "Stopped cue playback streamId=$currentStreamId reason=$reason")
             currentStreamId = 0
         }
-        if (shouldAbandonAudioFocus) {
-            abandonAudioFocus()
-        }
     }
 
     private fun stopInternal(reason: String) {
         val phase = pendingPhase
         pendingPhase = null
-        stopCurrentStreamLocked(reason = reason, shouldAbandonAudioFocus = false)
+        stopCurrentStreamLocked(reason = reason)
         Log.i(TAG, "Stopped cue processing phase=${phase?.name ?: "none"} reason=$reason")
-        abandonAudioFocus()
-    }
-
-    private fun abandonAudioFocus() {
-        if (!hasAudioFocus || audioManager == null) {
-            audioFocusRequest = null
-            hasAudioFocus = false
-            return
-        }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            audioFocusRequest?.let { request ->
-                audioManager.abandonAudioFocusRequest(request)
-            }
-        } else {
-            @Suppress("DEPRECATION")
-            audioManager.abandonAudioFocus(focusChangeListener)
-        }
-        Log.i(TAG, "Audio focus abandoned")
-        audioFocusRequest = null
-        hasAudioFocus = false
     }
 
     private fun isPhaseLoaded(phase: WalkingPhase): Boolean {
