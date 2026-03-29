@@ -101,6 +101,7 @@ class WalkingTimerService : Service() {
             return state
         }
 
+        val isNewSession = !isTimerPaused()
         if (!isTimerPaused()) {
             restoreConfiguredPhaseDurations()
             synchronized(stateLock) {
@@ -125,6 +126,9 @@ class WalkingTimerService : Service() {
         val state = currentUiState(nowElapsedRealtime)
         showNotification(state, promoteToForeground = true)
         publishAndPersistState(state)
+        if (isNewSession) {
+            enqueuePhaseStartAnnouncement(state.currentPhase, source = "new session")
+        }
         scheduleNextPhaseTransition(nowElapsedRealtime)
         return state
     }
@@ -219,7 +223,7 @@ class WalkingTimerService : Service() {
         }
 
         publishAndPersistState(state)
-        enqueuePhaseAnnouncement(state.currentPhase, source = "phase transition")
+        enqueuePhaseStartAnnouncement(state.currentPhase, source = "phase transition")
         scheduleNextPhaseTransition(nowElapsedRealtime)
     }
 
@@ -480,7 +484,7 @@ class WalkingTimerService : Service() {
     }
 
     @Synchronized
-    private fun enqueuePhaseAnnouncement(phase: WalkingPhase, source: String) {
+    private fun enqueuePhaseStartAnnouncement(phase: WalkingPhase, source: String) {
         phaseAnnouncementJob?.cancel()
         phaseAnnouncementJob = serviceScope.launch {
             try {

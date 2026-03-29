@@ -1,5 +1,6 @@
-PhaseAudioPlayerのaudio focus制御を削除
+フェーズ開始時の発話とバイブ発火点を統一
 
-・PhaseAudioPlayerからAudioManagerとaudio focus関連状態および処理を削除
-・pending再生と再生中ストリームの置換挙動を維持したままSoundPool直接再生へ変更
-・JAVA_HOMEをAndroid Studio同梱JBRに設定してassembleDebug成功を確認
+・新規開始時に開始フェーズのタイマー開始として発話とバイブを即時発火するよう調整
+・フェーズ切替時の発話呼び出しを同じ開始イベント経路へ統一
+・pause resume では再発火しない構成を維持
+・JAVA_HOME を設定した上で assembleDebug の成功を確認
