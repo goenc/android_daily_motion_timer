@@ -44,6 +44,8 @@ class WalkingTimerService : Service() {
     private var isVibrationEnabled = true
     private var isRunning = false
     private var isPaused = false
+    private var lastObservedPhaseStartNumber = UNINITIALIZED_PHASE_START_NUMBER
+    private var lastAnnouncedPhaseStartNumber = UNINITIALIZED_PHASE_START_NUMBER
     @Volatile
     private var hasForegroundNotification = false
     private var wakeLock: PowerManager.WakeLock? = null
@@ -94,7 +96,9 @@ class WalkingTimerService : Service() {
     private fun startOrResumeTimer(): TimerUiState {
         val nowElapsedRealtime = SystemClock.elapsedRealtime()
         if (isTimerRunning()) {
-            val state = currentUiState(nowElapsedRealtime)
+            val monitoredState = currentPhaseMonitorState(nowElapsedRealtime)
+            val state = monitoredState.state
+            syncPhaseStartTracking(monitoredState.phaseStartNumber, markAsAnnounced = true)
             showNotification(state, promoteToForeground = !hasForegroundNotification)
             publishAndPersistState(state)
             scheduleNextPhaseTransition(nowElapsedRealtime)
@@ -112,6 +116,7 @@ class WalkingTimerService : Service() {
                 isRunning = true
                 isPaused = false
             }
+            resetPhaseStartTracking()
         } else {
             synchronized(stateLock) {
                 accumulatedPauseMillis +=
@@ -123,12 +128,14 @@ class WalkingTimerService : Service() {
         }
 
         acquireWakeLockIfNeeded()
-        val state = currentUiState(nowElapsedRealtime)
+        val monitoredState = currentPhaseMonitorState(nowElapsedRealtime)
+        val state = monitoredState.state
         showNotification(state, promoteToForeground = true)
         publishAndPersistState(state)
         if (isNewSession) {
             enqueuePhaseStartAnnouncement(state.currentPhase, source = "new session")
         }
+        syncPhaseStartTracking(monitoredState.phaseStartNumber, markAsAnnounced = true)
         scheduleNextPhaseTransition(nowElapsedRealtime)
         return state
     }
@@ -171,6 +178,7 @@ class WalkingTimerService : Service() {
         releaseWakeLockIfHeld()
         phaseAudioPlayer.stop()
         resetTimerProgressState()
+        resetPhaseStartTracking()
         persistState()
 
         val stoppedState = currentUiState()
@@ -183,48 +191,61 @@ class WalkingTimerService : Service() {
 
     private fun scheduleNextPhaseTransition(nowElapsedRealtime: Long = SystemClock.elapsedRealtime()) {
         cancelPhaseTransitionJob("reschedule phase transition")
-        val delayMillis = synchronized(stateLock) {
-            if (!isRunning) {
-                null
-            } else {
-                calculateTimerSessionSnapshot(
-                    nowElapsedRealtime = nowElapsedRealtime,
-                    sessionStartElapsedRealtime = sessionStartElapsedRealtime,
-                    accumulatedPauseMillis = accumulatedPauseMillis,
-                    pauseStartedElapsedRealtime = pauseStartedElapsedRealtime,
-                    fastDurationMillis = fastDurationMillis,
-                    slowDurationMillis = slowDurationMillis,
-                    startPhase = startPhase,
-                    isRunning = isRunning,
-                    isPaused = isPaused,
-                ).remainingPhaseMillis.coerceAtLeast(1L)
-            }
-        } ?: return
+        if (!isTimerRunning()) {
+            return
+        }
 
         phaseTransitionJob = serviceScope.launch {
             try {
-                Log.i(TAG, "Scheduling next phase transition in ${delayMillis}ms")
-                delay(delayMillis)
-                handleScheduledPhaseTransition()
+                Log.i(TAG, "Starting phase transition monitor from ${nowElapsedRealtime}ms")
+                while (true) {
+                    val tickElapsedRealtime = SystemClock.elapsedRealtime()
+                    if (!handleScheduledPhaseTransition(tickElapsedRealtime)) {
+                        return@launch
+                    }
+                    delay(nextMonitorDelayMillis(tickElapsedRealtime))
+                }
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
-                Log.e(TAG, "Scheduled phase transition failed", error)
+                Log.e(TAG, "Phase transition monitor failed", error)
                 scheduleNextPhaseTransition()
             }
         }
     }
 
-    private fun handleScheduledPhaseTransition() {
-        val nowElapsedRealtime = SystemClock.elapsedRealtime()
-        val state = currentUiState(nowElapsedRealtime)
+    private fun handleScheduledPhaseTransition(
+        nowElapsedRealtime: Long = SystemClock.elapsedRealtime(),
+    ): Boolean {
+        val monitoredState = currentPhaseMonitorState(nowElapsedRealtime)
+        val state = monitoredState.state
         if (!state.isRunning) {
-            return
+            return false
         }
 
-        publishAndPersistState(state)
-        enqueuePhaseStartAnnouncement(state.currentPhase, source = "phase transition")
-        scheduleNextPhaseTransition(nowElapsedRealtime)
+        publishState(state)
+        updateNotification(state)
+
+        val shouldAnnounce = synchronized(stateLock) {
+            val previousObservedPhaseStartNumber = lastObservedPhaseStartNumber
+            if (monitoredState.phaseStartNumber > previousObservedPhaseStartNumber) {
+                lastObservedPhaseStartNumber = monitoredState.phaseStartNumber
+            }
+            if (
+                monitoredState.phaseStartNumber > previousObservedPhaseStartNumber &&
+                monitoredState.phaseStartNumber > lastAnnouncedPhaseStartNumber
+            ) {
+                lastAnnouncedPhaseStartNumber = monitoredState.phaseStartNumber
+                true
+            } else {
+                false
+            }
+        }
+        if (shouldAnnounce) {
+            persistState()
+            enqueuePhaseStartAnnouncement(state.currentPhase, source = "phase transition")
+        }
+        return true
     }
 
     private fun publishCurrentState() {
@@ -274,18 +295,19 @@ class WalkingTimerService : Service() {
     }
 
     private fun buildNotification(state: TimerUiState): Notification {
+        val statusText =
+            getString(
+                if (state.isPaused) {
+                    R.string.notification_paused
+                } else {
+                    R.string.notification_running
+                },
+            )
         val builder = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(getString(R.string.app_name))
-            .setContentText(
-                getString(
-                    if (state.isPaused) {
-                        R.string.notification_paused
-                    } else {
-                        R.string.notification_running
-                    },
-                ),
-            )
+            .setContentText("${state.currentPhase.label} ${state.formattedRemainingTime}")
+            .setSubText(statusText)
             .setContentIntent(createContentIntent())
             .setOnlyAlertOnce(true)
             .setOngoing(state.isActive)
@@ -354,30 +376,39 @@ class WalkingTimerService : Service() {
     }
 
     private fun restoreActiveSession(): TimerUiState? {
-        val restoredState = restorePersistedState() ?: run {
+        val nowElapsedRealtime = SystemClock.elapsedRealtime()
+        val restoredState = restorePersistedState(nowElapsedRealtime) ?: run {
             publishCurrentState()
             stopSelf()
             return null
         }
+        val monitoredState = currentPhaseMonitorState(nowElapsedRealtime)
+        val state = monitoredState.state
 
-        if (restoredState.isActive) {
-            showNotification(restoredState, promoteToForeground = true)
+        if (state.isActive) {
+            showNotification(state, promoteToForeground = true)
         }
 
-        publishAndPersistState(restoredState)
-        if (restoredState.isRunning) {
+        publishAndPersistState(state)
+        if (state.isActive) {
+            syncPhaseStartTracking(monitoredState.phaseStartNumber, markAsAnnounced = true)
+        } else {
+            resetPhaseStartTracking()
+        }
+        if (state.isRunning) {
             acquireWakeLockIfNeeded()
-            scheduleNextPhaseTransition()
+            scheduleNextPhaseTransition(nowElapsedRealtime)
         } else {
             cancelPhaseTransitionJob("restore inactive session")
             cancelPhaseAnnouncementJob("restore inactive session")
             releaseWakeLockIfHeld()
         }
-        return restoredState
+        return state
     }
 
-    private fun restorePersistedState(): TimerUiState? {
-        val nowElapsedRealtime = SystemClock.elapsedRealtime()
+    private fun restorePersistedState(
+        nowElapsedRealtime: Long = SystemClock.elapsedRealtime(),
+    ): TimerUiState? {
         val persistedState = WalkingTimerStateStore.load(this)?.sanitized(nowElapsedRealtime) ?: return null
 
         synchronized(stateLock) {
@@ -444,6 +475,16 @@ class WalkingTimerService : Service() {
         return baseState.resolveAt(nowElapsedRealtime)
     }
 
+    private fun currentPhaseMonitorState(
+        nowElapsedRealtime: Long = SystemClock.elapsedRealtime(),
+    ): PhaseMonitorState {
+        val baseState = synchronized(stateLock) { baseUiStateLocked() }
+        return PhaseMonitorState(
+            state = baseState.resolveAt(nowElapsedRealtime),
+            phaseStartNumber = calculateCurrentPhaseStartNumber(baseState, nowElapsedRealtime),
+        )
+    }
+
     private fun baseUiStateLocked(): TimerUiState {
         return TimerUiState(
             fastPhaseDurationSeconds = durationSecondsFromMillis(fastDurationMillis),
@@ -469,6 +510,67 @@ class WalkingTimerService : Service() {
             isRunning = false
             isPaused = false
         }
+    }
+
+    private fun calculateCurrentPhaseStartNumber(
+        baseState: TimerUiState,
+        nowElapsedRealtime: Long,
+    ): Long {
+        if (!baseState.isActive) {
+            return UNINITIALIZED_PHASE_START_NUMBER
+        }
+        val elapsedActiveMillis = calculateElapsedActiveMillis(
+            nowElapsedRealtime = nowElapsedRealtime,
+            sessionStartElapsedRealtime = baseState.sessionStartElapsedRealtime,
+            accumulatedPauseMillis = baseState.accumulatedPauseMillis,
+            pauseStartedElapsedRealtime = baseState.pauseStartedElapsedRealtime,
+            isRunning = baseState.isRunning,
+            isPaused = baseState.isPaused,
+        )
+        val fastPhaseDurationMillis = durationMillisFromSeconds(baseState.fastPhaseDurationSeconds)
+        val slowPhaseDurationMillis = durationMillisFromSeconds(baseState.slowPhaseDurationSeconds)
+        val firstPhaseDurationMillis = phaseDurationMillis(
+            phase = baseState.startPhase,
+            fastDurationMillis = fastPhaseDurationMillis,
+            slowDurationMillis = slowPhaseDurationMillis,
+        )
+        val secondPhaseDurationMillis = phaseDurationMillis(
+            phase = baseState.startPhase.next(),
+            fastDurationMillis = fastPhaseDurationMillis,
+            slowDurationMillis = slowPhaseDurationMillis,
+        )
+        val cycleDurationMillis = firstPhaseDurationMillis + secondPhaseDurationMillis
+        if (cycleDurationMillis <= 0L) {
+            return 0L
+        }
+        val completedCycles = elapsedActiveMillis / cycleDurationMillis
+        val positionInCycleMillis = elapsedActiveMillis % cycleDurationMillis
+        return if (positionInCycleMillis < firstPhaseDurationMillis) {
+            completedCycles * 2L
+        } else {
+            completedCycles * 2L + 1L
+        }
+    }
+
+    private fun syncPhaseStartTracking(phaseStartNumber: Long, markAsAnnounced: Boolean) {
+        synchronized(stateLock) {
+            lastObservedPhaseStartNumber = phaseStartNumber
+            if (markAsAnnounced) {
+                lastAnnouncedPhaseStartNumber = phaseStartNumber
+            }
+        }
+    }
+
+    private fun resetPhaseStartTracking() {
+        synchronized(stateLock) {
+            lastObservedPhaseStartNumber = UNINITIALIZED_PHASE_START_NUMBER
+            lastAnnouncedPhaseStartNumber = UNINITIALIZED_PHASE_START_NUMBER
+        }
+    }
+
+    private fun nextMonitorDelayMillis(nowElapsedRealtime: Long): Long {
+        val remainderMillis = nowElapsedRealtime % PHASE_MONITOR_TICK_MILLIS
+        return (PHASE_MONITOR_TICK_MILLIS - remainderMillis).coerceIn(1L, PHASE_MONITOR_TICK_MILLIS)
     }
 
     private fun isTimerRunning(): Boolean {
@@ -600,6 +702,8 @@ class WalkingTimerService : Service() {
         private const val REQUEST_CODE_STOP = 3
         private const val EXTRA_ANNOUNCEMENT_VOLUME = "extra_announcement_volume"
         private const val TAG = "WalkingTimerService"
+        private const val PHASE_MONITOR_TICK_MILLIS = 1_000L
+        private const val UNINITIALIZED_PHASE_START_NUMBER = -1L
 
         fun createIntent(context: Context, action: String): Intent {
             return Intent(context, WalkingTimerService::class.java).apply {
@@ -613,4 +717,9 @@ class WalkingTimerService : Service() {
             }
         }
     }
+
+    private data class PhaseMonitorState(
+        val state: TimerUiState,
+        val phaseStartNumber: Long,
+    )
 }
