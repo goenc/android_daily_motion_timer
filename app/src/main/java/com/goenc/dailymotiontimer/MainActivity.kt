@@ -11,6 +11,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -18,7 +20,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -29,7 +33,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -53,10 +60,12 @@ class MainActivity : ComponentActivity() {
             WorkoutFlowTimerTheme {
                 NotificationPermissionEffect()
                 val uiState by viewModel.uiState.collectAsState()
+                val phaseLogs by PhaseTransitionLogStore.entriesFlow.collectAsState()
                 val displayState = rememberDisplayState(uiState)
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     TimerScreen(
                         uiState = displayState,
+                        phaseLogs = phaseLogs,
                         modifier = Modifier.padding(innerPadding),
                         onStartPauseClick = {
                             if (displayState.isRunning) {
@@ -95,6 +104,7 @@ private fun rememberDisplayState(uiState: TimerUiState): TimerUiState {
 @Composable
 private fun TimerScreen(
     uiState: TimerUiState,
+    phaseLogs: List<PhaseTransitionLogEntry>,
     modifier: Modifier = Modifier,
     onStartPauseClick: () -> Unit,
     onStopClick: () -> Unit,
@@ -103,6 +113,8 @@ private fun TimerScreen(
     onAnnouncementVolumeChange: (Float) -> Unit,
     onVibrationEnabledChange: (Boolean) -> Unit,
 ) {
+    var isLogDialogVisible by remember { mutableStateOf(false) }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -200,6 +212,80 @@ private fun TimerScreen(
                 Text(text = stringResource(R.string.stop))
             }
         }
+        Button(
+            onClick = { isLogDialogVisible = true },
+            modifier = Modifier.padding(top = 16.dp),
+        ) {
+            Text(text = "ログ表示")
+        }
+    }
+
+    if (isLogDialogVisible) {
+        PhaseLogsDialog(
+            phaseLogs = phaseLogs,
+            onDismissRequest = { isLogDialogVisible = false },
+        )
+    }
+}
+
+@Composable
+private fun PhaseLogsDialog(
+    phaseLogs: List<PhaseTransitionLogEntry>,
+    onDismissRequest: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismissRequest,
+        title = {
+            Text(text = "遅延ログ")
+        },
+        text = {
+            val scrollState = rememberScrollState()
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 420.dp)
+                    .verticalScroll(scrollState),
+            ) {
+                val visibleLogs = phaseLogs.take(MAX_VISIBLE_LOG_COUNT)
+                if (visibleLogs.isEmpty()) {
+                    Text(text = "ログはまだありません")
+                } else {
+                    visibleLogs.forEach { entry ->
+                        PhaseLogEntryView(entry = entry)
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = onDismissRequest) {
+                Text(text = "閉じる")
+            }
+        },
+    )
+}
+
+@Composable
+private fun PhaseLogEntryView(entry: PhaseTransitionLogEntry) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = "${entry.phase.label} / ${entry.source}",
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Bold,
+        )
+        Text(
+            text = "差分 ${formatLogDelay(entry.displayDelayMillis)}",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Text(
+            text =
+                "理論 ${entry.theoreticalTransitionElapsedRealtime}ms\n" +
+                    "検知 ${entry.detectedElapsedRealtime}ms (${formatLogDelay(entry.detectedDelayMillis)})\n" +
+                    "キュー ${entry.enqueuedElapsedRealtime}ms (${formatLogDelay(entry.enqueuedDelayMillis)})\n" +
+                    "play ${formatLoggedTimestamp(entry.playRequestedElapsedRealtime, entry.playRequestedDelayMillis)}\n" +
+                    "SoundPool ${formatLoggedTimestamp(entry.soundPoolPlayElapsedRealtime, entry.soundPoolPlayDelayMillis)}",
+            style = MaterialTheme.typography.bodySmall,
+        )
     }
 }
 
@@ -299,6 +385,7 @@ private fun TimerScreenPreview() {
     WorkoutFlowTimerTheme {
         TimerScreen(
             uiState = TimerUiState(),
+            phaseLogs = emptyList(),
             onStartPauseClick = {},
             onStopClick = {},
             onFastPhaseDurationChange = {},
@@ -314,4 +401,20 @@ private fun durationSliderIndex(durationSeconds: Int): Int {
         .coerceAtLeast(0)
 }
 
+private fun formatLoggedTimestamp(timestamp: Long?, deltaMillis: Long?): String {
+    if (timestamp == null || deltaMillis == null) {
+        return "-"
+    }
+    return "${timestamp}ms (${formatLogDelay(deltaMillis)})"
+}
+
+private fun formatLogDelay(delayMillis: Long): String {
+    return if (delayMillis >= 0L) {
+        "+${delayMillis}ms"
+    } else {
+        "${delayMillis}ms"
+    }
+}
+
+private const val MAX_VISIBLE_LOG_COUNT = 30
 private const val UI_REFRESH_INTERVAL_MILLIS = 1_000L

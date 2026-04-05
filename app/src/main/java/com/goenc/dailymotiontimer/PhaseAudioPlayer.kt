@@ -6,6 +6,7 @@ import android.media.MediaMetadataRetriever
 import android.media.SoundPool
 import android.os.Handler
 import android.os.HandlerThread
+import android.os.SystemClock
 import android.util.Log
 
 internal class PhaseAudioPlayer(context: Context) {
@@ -39,7 +40,7 @@ internal class PhaseAudioPlayer(context: Context) {
     private var isSlowLoaded = false
     private var announcementVolume = DEFAULT_ANNOUNCEMENT_VOLUME
     private var currentStreamId = 0
-    private var pendingPhase: WalkingPhase? = null
+    private var pendingPlayback: PendingPlayback? = null
     private var pendingPlaybackCompleteRunnable: Runnable? = null
     @Volatile
     private var isReleased = false
@@ -51,14 +52,25 @@ internal class PhaseAudioPlayer(context: Context) {
         )
     }
 
-    fun play(phase: WalkingPhase) {
+    fun play(phase: WalkingPhase, logEntryId: Long? = null) {
         if (isReleased) {
             Log.w(TAG, "Ignoring ${phase.name} cue because audio player is released")
             return
         }
         audioHandler.post {
-            Log.i(TAG, "Received ${phase.name} cue playback request")
-            pendingPhase = phase
+            val playRequestedElapsedRealtime = SystemClock.elapsedRealtime()
+            if (logEntryId != null) {
+                PhaseTransitionLogStore.markPlayRequested(
+                    entryId = logEntryId,
+                    playRequestedElapsedRealtime = playRequestedElapsedRealtime,
+                )
+            }
+            Log.i(
+                TAG,
+                "Received ${phase.name} cue playback request " +
+                    "at=${playRequestedElapsedRealtime} logEntryId=${logEntryId ?: "none"}",
+            )
+            pendingPlayback = PendingPlayback(phase = phase, logEntryId = logEntryId)
             stopCurrentStreamLocked(reason = "replace with ${phase.name}")
             startPendingPlayback()
         }
@@ -125,12 +137,12 @@ internal class PhaseAudioPlayer(context: Context) {
             else -> Log.w(TAG, "Ignored unknown sound load callback soundId=$sampleId status=$status")
         }
 
-        val phase = pendingPhase ?: return
-        if (!isPhaseLoaded(phase) || currentStreamId != 0) {
+        val queuedPlayback = pendingPlayback ?: return
+        if (!isPhaseLoaded(queuedPlayback.phase) || currentStreamId != 0) {
             return
         }
 
-        Log.i(TAG, "Retrying pending ${phase.name} cue after load completion")
+        Log.i(TAG, "Retrying pending ${queuedPlayback.phase.name} cue after load completion")
         startPendingPlayback()
     }
 
@@ -139,12 +151,14 @@ internal class PhaseAudioPlayer(context: Context) {
             return
         }
 
-        val phase = pendingPhase ?: return
+        val queuedPlayback = pendingPlayback ?: return
+        val phase = queuedPlayback.phase
         if (!isPhaseLoaded(phase)) {
             Log.i(TAG, "Keeping ${phase.name} cue pending because sound is not loaded yet")
             return
         }
 
+        val soundPoolPlayElapsedRealtime = SystemClock.elapsedRealtime()
         val streamId =
             soundPool.play(
                 phase.soundId(),
@@ -156,12 +170,21 @@ internal class PhaseAudioPlayer(context: Context) {
             )
         if (streamId == 0) {
             Log.w(TAG, "Failed to start ${phase.name} cue playback")
-            pendingPhase = null
+            this.pendingPlayback = null
             return
         }
 
+        queuedPlayback.logEntryId?.let { entryId ->
+            PhaseTransitionLogStore.markSoundPoolPlay(
+                entryId = entryId,
+                soundPoolPlayElapsedRealtime = soundPoolPlayElapsedRealtime,
+            )
+        }
         currentStreamId = streamId
-        Log.i(TAG, "Started ${phase.name} cue playback streamId=$streamId")
+        Log.i(
+            TAG,
+            "Started ${phase.name} cue playback streamId=$streamId at=$soundPoolPlayElapsedRealtime",
+        )
         schedulePlaybackCompletionLocked(phase, streamId)
     }
 
@@ -173,8 +196,8 @@ internal class PhaseAudioPlayer(context: Context) {
                 return@Runnable
             }
             currentStreamId = 0
-            if (pendingPhase == phase) {
-                pendingPhase = null
+            if (pendingPlayback?.phase == phase) {
+                pendingPlayback = null
             }
             Log.i(TAG, "Completed ${phase.name} cue playback streamId=$streamId")
         }
@@ -201,10 +224,13 @@ internal class PhaseAudioPlayer(context: Context) {
     }
 
     private fun stopInternal(reason: String) {
-        val phase = pendingPhase
-        pendingPhase = null
+        val queuedPlayback = pendingPlayback
+        this.pendingPlayback = null
         stopCurrentStreamLocked(reason = reason)
-        Log.i(TAG, "Stopped cue processing phase=${phase?.name ?: "none"} reason=$reason")
+        Log.i(
+            TAG,
+            "Stopped cue processing phase=${queuedPlayback?.phase?.name ?: "none"} reason=$reason",
+        )
     }
 
     private fun isPhaseLoaded(phase: WalkingPhase): Boolean {
@@ -261,4 +287,9 @@ internal class PhaseAudioPlayer(context: Context) {
         private const val DEFAULT_PLAYBACK_CLEANUP_DELAY_MILLIS = 1500L
         private const val PLAYBACK_CLEANUP_GRACE_MILLIS = 200L
     }
+
+    private data class PendingPlayback(
+        val phase: WalkingPhase,
+        val logEntryId: Long?,
+    )
 }

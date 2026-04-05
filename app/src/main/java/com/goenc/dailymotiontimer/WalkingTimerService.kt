@@ -199,11 +199,18 @@ class WalkingTimerService : Service() {
             try {
                 Log.i(TAG, "Starting phase transition monitor from ${nowElapsedRealtime}ms")
                 while (true) {
-                    val tickElapsedRealtime = SystemClock.elapsedRealtime()
-                    if (!handleScheduledPhaseTransition(tickElapsedRealtime)) {
+                    val monitoredState =
+                        handleScheduledPhaseTransition(SystemClock.elapsedRealtime()) ?: return@launch
+                    val delayMillis =
+                        nextMonitorDelayMillis(
+                            nowElapsedRealtime = SystemClock.elapsedRealtime(),
+                            nextPhaseTransitionElapsedRealtime =
+                                monitoredState.nextPhaseTransitionElapsedRealtime,
+                        )
+                    if (delayMillis <= 0L) {
                         return@launch
                     }
-                    delay(nextMonitorDelayMillis(tickElapsedRealtime))
+                    delay(delayMillis)
                 }
             } catch (error: CancellationException) {
                 throw error
@@ -216,11 +223,11 @@ class WalkingTimerService : Service() {
 
     private fun handleScheduledPhaseTransition(
         nowElapsedRealtime: Long = SystemClock.elapsedRealtime(),
-    ): Boolean {
+    ): PhaseMonitorState? {
         val monitoredState = currentPhaseMonitorState(nowElapsedRealtime)
         val state = monitoredState.state
         if (!state.isRunning) {
-            return false
+            return null
         }
 
         publishState(state)
@@ -243,9 +250,23 @@ class WalkingTimerService : Service() {
         }
         if (shouldAnnounce) {
             persistState()
-            enqueuePhaseStartAnnouncement(state.currentPhase, source = "phase transition")
+            val enqueueElapsedRealtime = SystemClock.elapsedRealtime()
+            val logEntryId =
+                PhaseTransitionLogStore.recordTransition(
+                    phase = state.currentPhase,
+                    source = "phase transition",
+                    theoreticalTransitionElapsedRealtime =
+                        monitoredState.currentPhaseStartElapsedRealtime,
+                    detectedElapsedRealtime = nowElapsedRealtime,
+                    enqueuedElapsedRealtime = enqueueElapsedRealtime,
+                )
+            enqueuePhaseStartAnnouncement(
+                phase = state.currentPhase,
+                source = "phase transition",
+                logEntryId = logEntryId,
+            )
         }
-        return true
+        return monitoredState
     }
 
     private fun publishCurrentState() {
@@ -261,10 +282,10 @@ class WalkingTimerService : Service() {
         WalkingTimerController.publishState(state)
     }
 
-    private fun announcePhaseTransition(phase: WalkingPhase) {
+    private fun announcePhaseTransition(phase: WalkingPhase, logEntryId: Long? = null) {
         val currentAnnouncementVolume = synchronized(stateLock) { announcementVolume }
         phaseAudioPlayer.setAnnouncementVolume(currentAnnouncementVolume)
-        phaseAudioPlayer.play(phase)
+        phaseAudioPlayer.play(phase, logEntryId = logEntryId)
         if (!isVibrationEnabled()) {
             return
         }
@@ -479,9 +500,34 @@ class WalkingTimerService : Service() {
         nowElapsedRealtime: Long = SystemClock.elapsedRealtime(),
     ): PhaseMonitorState {
         val baseState = synchronized(stateLock) { baseUiStateLocked() }
+        if (!baseState.isActive) {
+            return PhaseMonitorState(
+                state = baseState.resolveAt(nowElapsedRealtime),
+                phaseStartNumber = UNINITIALIZED_PHASE_START_NUMBER,
+                currentPhaseStartElapsedRealtime = 0L,
+                nextPhaseTransitionElapsedRealtime = 0L,
+            )
+        }
+        val referenceElapsedRealtime = phaseReferenceElapsedRealtime(baseState, nowElapsedRealtime)
+        val sessionSnapshot =
+            calculateTimerSessionSnapshot(
+                nowElapsedRealtime = nowElapsedRealtime,
+                sessionStartElapsedRealtime = baseState.sessionStartElapsedRealtime,
+                accumulatedPauseMillis = baseState.accumulatedPauseMillis,
+                pauseStartedElapsedRealtime = baseState.pauseStartedElapsedRealtime,
+                fastDurationMillis = durationMillisFromSeconds(baseState.fastPhaseDurationSeconds),
+                slowDurationMillis = durationMillisFromSeconds(baseState.slowPhaseDurationSeconds),
+                startPhase = baseState.startPhase,
+                isRunning = baseState.isRunning,
+                isPaused = baseState.isPaused,
+            )
         return PhaseMonitorState(
             state = baseState.resolveAt(nowElapsedRealtime),
             phaseStartNumber = calculateCurrentPhaseStartNumber(baseState, nowElapsedRealtime),
+            currentPhaseStartElapsedRealtime =
+                (referenceElapsedRealtime - sessionSnapshot.phaseElapsedMillis).coerceAtLeast(0L),
+            nextPhaseTransitionElapsedRealtime =
+                referenceElapsedRealtime + sessionSnapshot.remainingPhaseMillis,
         )
     }
 
@@ -568,9 +614,32 @@ class WalkingTimerService : Service() {
         }
     }
 
-    private fun nextMonitorDelayMillis(nowElapsedRealtime: Long): Long {
-        val remainderMillis = nowElapsedRealtime % PHASE_MONITOR_TICK_MILLIS
-        return (PHASE_MONITOR_TICK_MILLIS - remainderMillis).coerceIn(1L, PHASE_MONITOR_TICK_MILLIS)
+    private fun phaseReferenceElapsedRealtime(
+        baseState: TimerUiState,
+        nowElapsedRealtime: Long,
+    ): Long {
+        return when {
+            baseState.isRunning -> nowElapsedRealtime
+            baseState.isPaused && baseState.pauseStartedElapsedRealtime > 0L ->
+                baseState.pauseStartedElapsedRealtime
+            else -> nowElapsedRealtime
+        }
+    }
+
+    private fun nextMonitorDelayMillis(
+        nowElapsedRealtime: Long,
+        nextPhaseTransitionElapsedRealtime: Long,
+    ): Long {
+        val remainingMillis =
+            (nextPhaseTransitionElapsedRealtime - nowElapsedRealtime).coerceAtLeast(1L)
+        return when {
+            remainingMillis > 10_000L -> 5_000L
+            remainingMillis > 5_000L -> 2_000L
+            remainingMillis > 1_000L -> (remainingMillis - 1_000L).coerceAtLeast(250L)
+            remainingMillis > 400L -> 200L
+            remainingMillis > 200L -> 100L
+            else -> remainingMillis
+        }.coerceAtLeast(1L)
     }
 
     private fun isTimerRunning(): Boolean {
@@ -586,12 +655,20 @@ class WalkingTimerService : Service() {
     }
 
     @Synchronized
-    private fun enqueuePhaseStartAnnouncement(phase: WalkingPhase, source: String) {
+    private fun enqueuePhaseStartAnnouncement(
+        phase: WalkingPhase,
+        source: String,
+        logEntryId: Long? = null,
+    ) {
         phaseAnnouncementJob?.cancel()
         phaseAnnouncementJob = serviceScope.launch {
             try {
-                Log.i(TAG, "Dispatching phase announcement for ${phase.name} source=$source")
-                announcePhaseTransition(phase)
+                Log.i(
+                    TAG,
+                    "Dispatching phase announcement for ${phase.name} " +
+                        "source=$source logEntryId=${logEntryId ?: "none"}",
+                )
+                announcePhaseTransition(phase, logEntryId = logEntryId)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
@@ -702,7 +779,6 @@ class WalkingTimerService : Service() {
         private const val REQUEST_CODE_STOP = 3
         private const val EXTRA_ANNOUNCEMENT_VOLUME = "extra_announcement_volume"
         private const val TAG = "WalkingTimerService"
-        private const val PHASE_MONITOR_TICK_MILLIS = 1_000L
         private const val UNINITIALIZED_PHASE_START_NUMBER = -1L
 
         fun createIntent(context: Context, action: String): Intent {
@@ -721,5 +797,7 @@ class WalkingTimerService : Service() {
     private data class PhaseMonitorState(
         val state: TimerUiState,
         val phaseStartNumber: Long,
+        val currentPhaseStartElapsedRealtime: Long,
+        val nextPhaseTransitionElapsedRealtime: Long,
     )
 }
