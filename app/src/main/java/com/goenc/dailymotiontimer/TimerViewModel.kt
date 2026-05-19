@@ -31,23 +31,11 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         WalkingTimerController.updateSlowPhaseDurationSeconds(getApplication(), durationSeconds)
     }
 
-    fun updateSetCount(setCount: Int) {
-        WalkingTimerController.updateSetCount(getApplication(), setCount)
-    }
-
-    fun updateStartDelaySeconds(startDelaySeconds: Int) {
-        WalkingTimerController.updateStartDelaySeconds(getApplication(), startDelaySeconds)
-    }
-
     fun updateVibrationEnabled(isEnabled: Boolean) {
         WalkingTimerController.updateVibrationEnabled(getApplication(), isEnabled)
     }
 
     fun updateAnnouncementVolume(volume: Float) {
         WalkingTimerController.updateAnnouncementVolume(getApplication(), volume)
-    }
-
-    fun setAppVisible(isVisible: Boolean) {
-        WalkingTimerController.setAppVisible(getApplication(), isVisible)
     }
 }

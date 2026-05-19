@@ -32,23 +32,18 @@ class WalkingTimerService : Service() {
 
     private var phaseTransitionJob: Job? = null
     private var phaseAnnouncementJob: Job? = null
-    private var countdownRefreshJob: Job? = null
     private lateinit var phaseAudioPlayer: PhaseAudioPlayer
-    private lateinit var phaseOverlay: WalkingPhaseOverlay
 
     private var sessionStartElapsedRealtime = 0L
     private var accumulatedPauseMillis = 0L
     private var pauseStartedElapsedRealtime = 0L
     private var fastDurationMillis = durationMillisFromSeconds(DEFAULT_PHASE_DURATION_SECONDS)
     private var slowDurationMillis = durationMillisFromSeconds(DEFAULT_PHASE_DURATION_SECONDS)
-    private var setCount = DEFAULT_SET_COUNT
-    private var startDelaySeconds = DEFAULT_START_DELAY_SECONDS
     private var startPhase = WalkingPhase.Fast
     private var announcementVolume = DEFAULT_ANNOUNCEMENT_VOLUME
     private var isVibrationEnabled = true
     private var isRunning = false
     private var isPaused = false
-    private var isAppVisible = true
     private var lastObservedPhaseStartNumber = UNINITIALIZED_PHASE_START_NUMBER
     private var lastAnnouncedPhaseStartNumber = UNINITIALIZED_PHASE_START_NUMBER
     @Volatile
@@ -59,7 +54,6 @@ class WalkingTimerService : Service() {
         super.onCreate()
         createNotificationChannel()
         phaseAudioPlayer = PhaseAudioPlayer(applicationContext)
-        phaseOverlay = WalkingPhaseOverlay(applicationContext)
         wakeLock = createWakeLock()
 
         val initialState = restorePersistedState() ?: TimerUiState()
@@ -77,7 +71,6 @@ class WalkingTimerService : Service() {
                 stopTimer()
                 null
             }
-            ACTION_SET_APP_VISIBLE -> updateAppVisibility(intent)
             ACTION_UPDATE_ANNOUNCEMENT_VOLUME -> updateAnnouncementVolume(intent)
             ACTION_RESTORE, null -> restoreActiveSession()
             else -> currentUiState()
@@ -88,13 +81,11 @@ class WalkingTimerService : Service() {
     override fun onDestroy() {
         cancelPhaseTransitionJob("service destroy")
         cancelPhaseAnnouncementJob("service destroy")
-        cancelCountdownRefreshJob("service destroy")
         val state = currentUiState()
         if (state.isActive) {
             persistState()
         }
         releaseWakeLockIfHeld()
-        phaseOverlay.hide()
         phaseAudioPlayer.release()
         serviceScope.cancel()
         super.onDestroy()
@@ -118,8 +109,7 @@ class WalkingTimerService : Service() {
         if (!isTimerPaused()) {
             restoreConfiguredPhaseDurations()
             synchronized(stateLock) {
-                sessionStartElapsedRealtime = nowElapsedRealtime +
-                    normalizeStartDelaySeconds(startDelaySeconds).toLong() * 1_000L
+                sessionStartElapsedRealtime = nowElapsedRealtime
                 accumulatedPauseMillis = 0L
                 pauseStartedElapsedRealtime = 0L
                 startPhase = WalkingPhase.Fast
@@ -142,12 +132,11 @@ class WalkingTimerService : Service() {
         val state = monitoredState.state
         showNotification(state, promoteToForeground = true)
         publishAndPersistState(state)
-        if (isNewSession && !state.isPreparingStart) {
+        if (isNewSession) {
             enqueuePhaseStartAnnouncement(state.currentPhase, source = "new session")
         }
         syncPhaseStartTracking(monitoredState.phaseStartNumber, markAsAnnounced = true)
         scheduleNextPhaseTransition(nowElapsedRealtime)
-        scheduleCountdownRefresh()
         return state
     }
 
@@ -171,7 +160,6 @@ class WalkingTimerService : Service() {
         }
         cancelPhaseTransitionJob("pause")
         cancelPhaseAnnouncementJob("pause")
-        cancelCountdownRefreshJob("pause")
         releaseWakeLockIfHeld()
 
         val pausedState = currentUiState(nowElapsedRealtime)
@@ -187,7 +175,6 @@ class WalkingTimerService : Service() {
         }
         cancelPhaseTransitionJob("stop")
         cancelPhaseAnnouncementJob("stop")
-        cancelCountdownRefreshJob("stop")
         releaseWakeLockIfHeld()
         phaseAudioPlayer.stop()
         resetTimerProgressState()
@@ -196,7 +183,6 @@ class WalkingTimerService : Service() {
 
         val stoppedState = currentUiState()
         hasForegroundNotification = false
-        phaseOverlay.hide()
         stopForeground(STOP_FOREGROUND_REMOVE)
         NotificationManagerCompat.from(this).cancel(NOTIFICATION_ID)
         publishState(stoppedState)
@@ -294,7 +280,6 @@ class WalkingTimerService : Service() {
 
     private fun publishState(state: TimerUiState) {
         WalkingTimerController.publishState(state)
-        updatePhaseOverlay(state)
     }
 
     private fun announcePhaseTransition(phase: WalkingPhase, logEntryId: Long? = null) {
@@ -411,14 +396,6 @@ class WalkingTimerService : Service() {
         NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, buildNotification(state))
     }
 
-    private fun updatePhaseOverlay(state: TimerUiState) {
-        if (state.isActive && !isAppVisible) {
-            phaseOverlay.showOrUpdate(state)
-        } else {
-            phaseOverlay.hide()
-        }
-    }
-
     private fun restoreActiveSession(): TimerUiState? {
         val nowElapsedRealtime = SystemClock.elapsedRealtime()
         val restoredState = restorePersistedState(nowElapsedRealtime) ?: run {
@@ -442,11 +419,9 @@ class WalkingTimerService : Service() {
         if (state.isRunning) {
             acquireWakeLockIfNeeded()
             scheduleNextPhaseTransition(nowElapsedRealtime)
-            scheduleCountdownRefresh()
         } else {
             cancelPhaseTransitionJob("restore inactive session")
             cancelPhaseAnnouncementJob("restore inactive session")
-            cancelCountdownRefreshJob("restore inactive session")
             releaseWakeLockIfHeld()
         }
         return state
@@ -474,8 +449,6 @@ class WalkingTimerService : Service() {
                 if (persistedState.isPaused) persistedState.pauseStartedElapsedRealtime else 0L
             fastDurationMillis = persistedState.fastDurationMillis
             slowDurationMillis = persistedState.slowDurationMillis
-            setCount = persistedState.setCount
-            startDelaySeconds = persistedState.startDelaySeconds
             startPhase = persistedState.startPhase
             isRunning = persistedState.isRunning
             isPaused = persistedState.isPaused
@@ -493,8 +466,6 @@ class WalkingTimerService : Service() {
         synchronized(stateLock) {
             fastDurationMillis = persistedState.fastDurationMillis
             slowDurationMillis = persistedState.slowDurationMillis
-            setCount = persistedState.setCount
-            startDelaySeconds = persistedState.startDelaySeconds
             announcementVolume = restoredAnnouncementVolume
             isVibrationEnabled = persistedState.isVibrationEnabled
         }
@@ -510,8 +481,6 @@ class WalkingTimerService : Service() {
                 pauseStartedElapsedRealtime = if (isPaused) pauseStartedElapsedRealtime else 0L,
                 fastDurationMillis = fastDurationMillis,
                 slowDurationMillis = slowDurationMillis,
-                setCount = setCount,
-                startDelaySeconds = startDelaySeconds,
                 startPhase = startPhase,
                 isRunning = isRunning,
                 isPaused = isPaused,
@@ -537,20 +506,6 @@ class WalkingTimerService : Service() {
                 phaseStartNumber = UNINITIALIZED_PHASE_START_NUMBER,
                 currentPhaseStartElapsedRealtime = 0L,
                 nextPhaseTransitionElapsedRealtime = 0L,
-            )
-        }
-        if (baseState.sessionStartElapsedRealtime > nowElapsedRealtime) {
-            val firstPhaseDurationMillis = phaseDurationMillis(
-                phase = baseState.startPhase,
-                fastDurationMillis = durationMillisFromSeconds(baseState.fastPhaseDurationSeconds),
-                slowDurationMillis = durationMillisFromSeconds(baseState.slowPhaseDurationSeconds),
-            )
-            return PhaseMonitorState(
-                state = baseState.resolveAt(nowElapsedRealtime),
-                phaseStartNumber = UNINITIALIZED_PHASE_START_NUMBER,
-                currentPhaseStartElapsedRealtime = baseState.sessionStartElapsedRealtime,
-                nextPhaseTransitionElapsedRealtime =
-                    baseState.sessionStartElapsedRealtime + firstPhaseDurationMillis,
             )
         }
         val referenceElapsedRealtime = phaseReferenceElapsedRealtime(baseState, nowElapsedRealtime)
@@ -580,8 +535,6 @@ class WalkingTimerService : Service() {
         return TimerUiState(
             fastPhaseDurationSeconds = durationSecondsFromMillis(fastDurationMillis),
             slowPhaseDurationSeconds = durationSecondsFromMillis(slowDurationMillis),
-            setCount = setCount,
-            startDelaySeconds = startDelaySeconds,
             announcementVolume = announcementVolume,
             isVibrationEnabled = isVibrationEnabled,
             isRunning = isRunning,
@@ -610,9 +563,6 @@ class WalkingTimerService : Service() {
         nowElapsedRealtime: Long,
     ): Long {
         if (!baseState.isActive) {
-            return UNINITIALIZED_PHASE_START_NUMBER
-        }
-        if (baseState.sessionStartElapsedRealtime > nowElapsedRealtime) {
             return UNINITIALIZED_PHASE_START_NUMBER
         }
         val elapsedActiveMillis = calculateElapsedActiveMillis(
@@ -745,31 +695,6 @@ class WalkingTimerService : Service() {
         phaseAnnouncementJob = null
     }
 
-    @Synchronized
-    private fun scheduleCountdownRefresh() {
-        cancelCountdownRefreshJob("reschedule countdown refresh")
-        if (!isTimerRunning()) {
-            return
-        }
-        countdownRefreshJob = serviceScope.launch {
-            while (isTimerRunning()) {
-                val state = currentUiState()
-                publishState(state)
-                updateNotification(state)
-                delay(COUNTDOWN_REFRESH_INTERVAL_MILLIS)
-            }
-        }
-    }
-
-    @Synchronized
-    private fun cancelCountdownRefreshJob(reason: String) {
-        countdownRefreshJob?.let { job ->
-            Log.i(TAG, "Cancelling countdown refresh job reason=$reason")
-            job.cancel()
-        }
-        countdownRefreshJob = null
-    }
-
     private fun createWakeLock(): PowerManager.WakeLock? {
         val powerManager = getSystemService(PowerManager::class.java) ?: run {
             Log.w(TAG, "PowerManager was unavailable, WakeLock was not created")
@@ -823,13 +748,6 @@ class WalkingTimerService : Service() {
         return state
     }
 
-    private fun updateAppVisibility(intent: Intent?): TimerUiState {
-        isAppVisible = intent?.getBooleanExtra(EXTRA_APP_VISIBLE, true) ?: true
-        val state = currentUiState()
-        updatePhaseOverlay(state)
-        return state
-    }
-
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
             return
@@ -852,7 +770,6 @@ class WalkingTimerService : Service() {
         const val ACTION_STOP = "com.goenc.dailymotiontimer.action.STOP"
         const val ACTION_RESTORE = "com.goenc.dailymotiontimer.action.RESTORE"
         const val ACTION_UPDATE_ANNOUNCEMENT_VOLUME = "com.goenc.dailymotiontimer.action.UPDATE_ANNOUNCEMENT_VOLUME"
-        const val ACTION_SET_APP_VISIBLE = "com.goenc.dailymotiontimer.action.SET_APP_VISIBLE"
 
         private const val NOTIFICATION_CHANNEL_ID = "walking_timer"
         private const val NOTIFICATION_ID = 1001
@@ -861,10 +778,8 @@ class WalkingTimerService : Service() {
         private const val REQUEST_CODE_RESUME = 2
         private const val REQUEST_CODE_STOP = 3
         private const val EXTRA_ANNOUNCEMENT_VOLUME = "extra_announcement_volume"
-        private const val EXTRA_APP_VISIBLE = "extra_app_visible"
         private const val TAG = "WalkingTimerService"
         private const val UNINITIALIZED_PHASE_START_NUMBER = -1L
-        private const val COUNTDOWN_REFRESH_INTERVAL_MILLIS = 1_000L
 
         fun createIntent(context: Context, action: String): Intent {
             return Intent(context, WalkingTimerService::class.java).apply {
@@ -875,12 +790,6 @@ class WalkingTimerService : Service() {
         fun createAnnouncementVolumeIntent(context: Context, announcementVolume: Float): Intent {
             return createIntent(context, ACTION_UPDATE_ANNOUNCEMENT_VOLUME).apply {
                 putExtra(EXTRA_ANNOUNCEMENT_VOLUME, announcementVolume)
-            }
-        }
-
-        fun createAppVisibilityIntent(context: Context, isVisible: Boolean): Intent {
-            return createIntent(context, ACTION_SET_APP_VISIBLE).apply {
-                putExtra(EXTRA_APP_VISIBLE, isVisible)
             }
         }
     }

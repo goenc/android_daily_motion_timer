@@ -10,11 +10,7 @@ enum class WalkingPhase(val label: String, val announcement: String) {
 }
 
 val PHASE_DURATION_OPTIONS_SECONDS = listOf(10, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330)
-val SET_COUNT_OPTIONS = listOf(5, 10, 15, 20)
-val START_DELAY_OPTIONS_SECONDS = listOf(10, 900, 1200, 1500, 1800)
 const val DEFAULT_PHASE_DURATION_SECONDS = 180
-const val DEFAULT_SET_COUNT = 5
-const val DEFAULT_START_DELAY_SECONDS = 900
 const val DEFAULT_ANNOUNCEMENT_VOLUME = 1.0f
 
 data class TimerUiState(
@@ -23,8 +19,6 @@ data class TimerUiState(
     val elapsedSeconds: Int = 0,
     val fastPhaseDurationSeconds: Int = DEFAULT_PHASE_DURATION_SECONDS,
     val slowPhaseDurationSeconds: Int = DEFAULT_PHASE_DURATION_SECONDS,
-    val setCount: Int = DEFAULT_SET_COUNT,
-    val startDelaySeconds: Int = DEFAULT_START_DELAY_SECONDS,
     val announcementVolume: Float = DEFAULT_ANNOUNCEMENT_VOLUME,
     val isVibrationEnabled: Boolean = true,
     val isRunning: Boolean = false,
@@ -33,7 +27,6 @@ data class TimerUiState(
     val accumulatedPauseMillis: Long = 0L,
     val pauseStartedElapsedRealtime: Long = 0L,
     val startPhase: WalkingPhase = WalkingPhase.Fast,
-    val preStartRemainingSeconds: Int = 0,
 ) {
     val formattedRemainingTime: String
         get() = formatRemainingDuration(remainingSeconds)
@@ -47,40 +40,12 @@ data class TimerUiState(
     val formattedSlowPhaseDuration: String
         get() = formatPhaseDuration(slowPhaseDurationSeconds)
 
-    val formattedSetCount: String
-        get() = formatSetCount(setCount)
-
-    val currentSetNumber: Int
-        get() = calculateCurrentSetNumber(
-            elapsedSeconds = elapsedSeconds,
-            fastPhaseDurationSeconds = fastPhaseDurationSeconds,
-            slowPhaseDurationSeconds = slowPhaseDurationSeconds,
-            setCount = setCount,
-            isActive = isActive,
-        )
-
     val isActive: Boolean
         get() = isRunning || isPaused
-
-    val isPreparingStart: Boolean
-        get() = isRunning && sessionStartElapsedRealtime > 0L && preStartRemainingSeconds > 0
-
-    val formattedStartDelay: String
-        get() = formatPhaseDuration(startDelaySeconds)
-
-    val formattedPreStartRemainingTime: String
-        get() = formatRemainingDuration(preStartRemainingSeconds)
 
     fun resolveAt(nowElapsedRealtime: Long): TimerUiState {
         val normalizedFastDurationSeconds = normalizePhaseDurationSeconds(fastPhaseDurationSeconds)
         val normalizedSlowDurationSeconds = normalizePhaseDurationSeconds(slowPhaseDurationSeconds)
-        val normalizedStartDelaySeconds = normalizeStartDelaySeconds(startDelaySeconds)
-        val preStartRemainingSeconds =
-            if (isRunning && sessionStartElapsedRealtime > nowElapsedRealtime) {
-                (((sessionStartElapsedRealtime - nowElapsedRealtime) + 999L) / 1_000L).toInt()
-            } else {
-                0
-            }
         val snapshot = calculateTimerSessionSnapshot(
             nowElapsedRealtime = nowElapsedRealtime,
             sessionStartElapsedRealtime = sessionStartElapsedRealtime,
@@ -103,10 +68,7 @@ data class TimerUiState(
             elapsedSeconds = elapsedSecondsFromMillis(snapshot.elapsedActiveMillis),
             fastPhaseDurationSeconds = normalizedFastDurationSeconds,
             slowPhaseDurationSeconds = normalizedSlowDurationSeconds,
-            setCount = normalizeSetCount(setCount),
-            startDelaySeconds = normalizedStartDelaySeconds,
             announcementVolume = normalizeAnnouncementVolume(announcementVolume),
-            preStartRemainingSeconds = preStartRemainingSeconds,
         )
     }
 }
@@ -117,8 +79,6 @@ data class PersistedTimerState(
     val pauseStartedElapsedRealtime: Long,
     val fastDurationMillis: Long,
     val slowDurationMillis: Long,
-    val setCount: Int,
-    val startDelaySeconds: Int,
     val startPhase: WalkingPhase,
     val isRunning: Boolean,
     val isPaused: Boolean,
@@ -130,8 +90,7 @@ data class PersistedTimerState(
         val normalizedSlowDurationMillis = normalizePhaseDurationMillis(slowDurationMillis)
         val normalizedAnnouncementVolume = normalizeAnnouncementVolume(announcementVolume)
         val hasValidSession =
-            sessionStartElapsedRealtime > 0L &&
-                (sessionStartElapsedRealtime <= nowElapsedRealtime || isRunning)
+            sessionStartElapsedRealtime > 0L && sessionStartElapsedRealtime <= nowElapsedRealtime
         val sanitizedPauseStartedElapsedRealtime =
             if (
                 pauseStartedElapsedRealtime > 0L &&
@@ -151,7 +110,6 @@ data class PersistedTimerState(
             pauseStartedElapsedRealtime = if (sanitizedIsPaused) sanitizedPauseStartedElapsedRealtime else 0L,
             fastDurationMillis = normalizedFastDurationMillis,
             slowDurationMillis = normalizedSlowDurationMillis,
-            startDelaySeconds = normalizeStartDelaySeconds(startDelaySeconds),
             isRunning = sanitizedIsRunning,
             isPaused = sanitizedIsPaused,
             announcementVolume = normalizedAnnouncementVolume,
@@ -163,8 +121,6 @@ data class PersistedTimerState(
         return TimerUiState(
             fastPhaseDurationSeconds = durationSecondsFromMillis(sanitizedState.fastDurationMillis),
             slowPhaseDurationSeconds = durationSecondsFromMillis(sanitizedState.slowDurationMillis),
-            setCount = normalizeSetCount(sanitizedState.setCount),
-            startDelaySeconds = normalizeStartDelaySeconds(sanitizedState.startDelaySeconds),
             announcementVolume = sanitizedState.announcementVolume,
             isVibrationEnabled = sanitizedState.isVibrationEnabled,
             isRunning = sanitizedState.isRunning,
@@ -209,22 +165,6 @@ internal fun normalizeAnnouncementVolume(volume: Float): Float {
         DEFAULT_ANNOUNCEMENT_VOLUME
     } else {
         volume.coerceIn(0.0f, 1.0f)
-    }
-}
-
-internal fun normalizeSetCount(setCount: Int): Int {
-    return if (setCount in SET_COUNT_OPTIONS) {
-        setCount
-    } else {
-        DEFAULT_SET_COUNT
-    }
-}
-
-internal fun normalizeStartDelaySeconds(startDelaySeconds: Int): Int {
-    return if (startDelaySeconds in START_DELAY_OPTIONS_SECONDS) {
-        startDelaySeconds
-    } else {
-        DEFAULT_START_DELAY_SECONDS
     }
 }
 
@@ -344,8 +284,6 @@ internal fun TimerUiState.toPersistedState(): PersistedTimerState {
         pauseStartedElapsedRealtime = if (isPaused) pauseStartedElapsedRealtime else 0L,
         fastDurationMillis = durationMillisFromSeconds(normalizedFastDurationSeconds),
         slowDurationMillis = durationMillisFromSeconds(normalizedSlowDurationSeconds),
-        setCount = normalizeSetCount(setCount),
-        startDelaySeconds = normalizeStartDelaySeconds(startDelaySeconds),
         startPhase = if (isActive) startPhase else WalkingPhase.Fast,
         isRunning = isRunning,
         isPaused = isPaused,
@@ -379,28 +317,4 @@ internal fun formatPhaseDuration(totalSeconds: Int): String {
         seconds == 0 -> "${minutes}分"
         else -> "${minutes}分${seconds}秒"
     }
-}
-
-internal fun formatSetCount(setCount: Int): String {
-    return "${normalizeSetCount(setCount)}セット"
-}
-
-internal fun calculateCurrentSetNumber(
-    elapsedSeconds: Int,
-    fastPhaseDurationSeconds: Int,
-    slowPhaseDurationSeconds: Int,
-    setCount: Int,
-    isActive: Boolean,
-): Int {
-    if (!isActive) {
-        return 1
-    }
-    val cycleSeconds =
-        normalizePhaseDurationSeconds(fastPhaseDurationSeconds) +
-            normalizePhaseDurationSeconds(slowPhaseDurationSeconds)
-    if (cycleSeconds <= 0) {
-        return 1
-    }
-    val currentSet = (elapsedSeconds / cycleSeconds) + 1
-    return currentSet.coerceIn(1, normalizeSetCount(setCount))
 }

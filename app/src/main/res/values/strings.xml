@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">さんぽ</string>
+    <string name="app_name">Workout Flow Timer</string>
     <string name="start">開始</string>
     <string name="pause">一時停止</string>
     <string name="resume">再開</string>
@@ -7,23 +7,11 @@
     <string name="elapsed_time_label">累計経過時間 %1$s</string>
     <string name="fast_phase_duration_label">早く歩く時間</string>
     <string name="slow_phase_duration_label">ゆっくり歩く時間</string>
-    <string name="set_count_label">セット数</string>
-    <string name="current_set_label">現在 %1$d / %2$d セット目</string>
     <string name="announcement_volume_label">発話音量</string>
     <string name="announcement_volume_value">%1$d%%</string>
     <string name="vibration_enabled_label">バイブ通知</string>
-    <string name="setting_summary">%1$s: %2$s</string>
-    <string name="open_settings">設定</string>
-    <string name="settings_title">設定画面</string>
-    <string name="start_delay_label">運動開始までの時間</string>
-    <string name="back_to_timer">タイマーに戻る</string>
-    <string name="pre_start_countdown_label">開始まで %1$s</string>
     <string name="setting_on">ON</string>
     <string name="setting_off">OFF</string>
-    <string name="overlay_permission_explanation">最小化中に小窓を表示するには、他のアプリの上に重ねて表示する許可が必要です。</string>
-    <string name="open_overlay_settings">小窓表示を許可する</string>
-    <string name="close_overlay">×</string>
-    <string name="return_to_app">アプリに戻る</string>
     <string name="notification_running">タイマー動作中</string>
     <string name="notification_paused">タイマー一時停止中</string>
     <string name="timer_notification_channel_name">歩行タイマー</string>
