@@ -74,6 +74,34 @@ object WalkingTimerController {
         )
     }
 
+    fun updateSetCount(context: Context, setCount: Int) {
+        val currentState = _uiState.value
+        if (currentState.isActive) {
+            return
+        }
+
+        val updatedState = currentState.copy(setCount = normalizeSetCount(setCount))
+        publishState(updatedState)
+        WalkingTimerStateStore.save(
+            context.applicationContext,
+            updatedState.toPersistedState(),
+        )
+    }
+
+    fun updateStartDelaySeconds(context: Context, startDelaySeconds: Int) {
+        val currentState = _uiState.value
+        if (currentState.isActive) {
+            return
+        }
+
+        val updatedState = currentState.copy(startDelaySeconds = normalizeStartDelaySeconds(startDelaySeconds))
+        publishState(updatedState)
+        WalkingTimerStateStore.save(
+            context.applicationContext,
+            updatedState.toPersistedState(),
+        )
+    }
+
     fun updateVibrationEnabled(context: Context, isEnabled: Boolean) {
         val currentState = _uiState.value
         if (currentState.isActive) {
@@ -110,6 +138,19 @@ object WalkingTimerController {
         )
     }
 
+    fun setAppVisible(context: Context, isVisible: Boolean) {
+        if (!_uiState.value.isActive) {
+            return
+        }
+
+        context.applicationContext.startService(
+            WalkingTimerService.createAppVisibilityIntent(
+                context = context.applicationContext,
+                isVisible = isVisible,
+            ),
+        )
+    }
+
     internal fun publishState(state: TimerUiState) {
         _uiState.value = state
     }
@@ -130,6 +171,8 @@ object WalkingTimerController {
             elapsedSeconds = 0,
             fastPhaseDurationSeconds = normalizePhaseDurationSeconds(fastPhaseDurationSeconds),
             slowPhaseDurationSeconds = normalizePhaseDurationSeconds(slowPhaseDurationSeconds),
+            setCount = currentState.setCount,
+            startDelaySeconds = currentState.startDelaySeconds,
             announcementVolume = currentState.announcementVolume,
             isVibrationEnabled = currentState.isVibrationEnabled,
             isRunning = false,
