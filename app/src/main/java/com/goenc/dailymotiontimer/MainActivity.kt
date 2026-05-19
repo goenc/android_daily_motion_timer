@@ -22,6 +22,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -34,7 +37,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -62,7 +64,24 @@ class MainActivity : ComponentActivity() {
                 val uiState by viewModel.uiState.collectAsState()
                 val displayState = rememberDisplayState(uiState)
                 var isSettingsOpen by rememberSaveable { mutableStateOf(false) }
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+                Scaffold(
+                    modifier = Modifier.fillMaxSize(),
+                    topBar = {
+                        if (!isSettingsOpen) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .statusBarsPadding()
+                                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                                horizontalArrangement = Arrangement.End,
+                            ) {
+                                Button(onClick = { isSettingsOpen = true }) {
+                                    Text(text = stringResource(R.string.open_settings))
+                                }
+                            }
+                        }
+                    },
+                ) { innerPadding ->
                     if (isSettingsOpen) {
                         StartDelaySettingsScreen(
                             uiState = displayState,
@@ -88,7 +107,6 @@ class MainActivity : ComponentActivity() {
                             onAnnouncementVolumeChange = viewModel::updateAnnouncementVolume,
                             onVibrationEnabledChange = viewModel::updateVibrationEnabled,
                             onOpenOverlaySettingsClick = ::openOverlaySettings,
-                            onOpenSettingsClick = { isSettingsOpen = true },
                         )
                     }
                 }
@@ -142,16 +160,17 @@ private fun TimerScreen(
     onAnnouncementVolumeChange: (Float) -> Unit,
     onVibrationEnabledChange: (Boolean) -> Unit,
     onOpenOverlaySettingsClick: () -> Unit,
-    onOpenSettingsClick: () -> Unit,
 ) {
     val context = LocalContext.current
     Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(horizontal = 24.dp),
-        verticalArrangement = Arrangement.Center,
+            .padding(horizontal = 24.dp)
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.Top,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+        Spacer(modifier = Modifier.height(24.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.Start,
@@ -166,11 +185,6 @@ private fun TimerScreen(
                 fontWeight = FontWeight.Bold,
             )
         }
-        Spacer(modifier = Modifier.height(8.dp))
-        Button(onClick = onOpenSettingsClick) {
-            Text(text = stringResource(R.string.open_settings))
-        }
-        Spacer(modifier = Modifier.height(8.dp))
         Text(
             text = if (uiState.isPreparingStart) {
                 stringResource(R.string.pre_start_countdown_label, uiState.formattedPreStartRemainingTime)
@@ -296,10 +310,12 @@ private fun StartDelaySettingsScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(horizontal = 24.dp),
-        verticalArrangement = Arrangement.Center,
+            .padding(horizontal = 24.dp)
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.Top,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+        Spacer(modifier = Modifier.height(16.dp))
         Text(
             text = stringResource(R.string.settings_title),
             style = MaterialTheme.typography.headlineSmall,
@@ -500,7 +516,6 @@ private fun TimerScreenPreview() {
             onAnnouncementVolumeChange = {},
             onVibrationEnabledChange = {},
             onOpenOverlaySettingsClick = {},
-            onOpenSettingsClick = {},
         )
     }
 }
