@@ -88,20 +88,6 @@ object WalkingTimerController {
         )
     }
 
-    fun updateStartDelaySeconds(context: Context, startDelaySeconds: Int) {
-        val currentState = _uiState.value
-        if (currentState.isActive) {
-            return
-        }
-
-        val updatedState = currentState.copy(startDelaySeconds = normalizeStartDelaySeconds(startDelaySeconds))
-        publishState(updatedState)
-        WalkingTimerStateStore.save(
-            context.applicationContext,
-            updatedState.toPersistedState(),
-        )
-    }
-
     fun updateVibrationEnabled(context: Context, isEnabled: Boolean) {
         val currentState = _uiState.value
         if (currentState.isActive) {

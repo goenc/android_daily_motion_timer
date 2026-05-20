@@ -61,19 +61,22 @@ class WalkingPhaseOverlay(private val context: Context) {
 
     private fun createOverlayView(): View {
         return FrameLayout(context).apply {
-            setPadding(18.dp, 12.dp, 4.dp, 14.dp)
+            setPadding(18.dp, 12.dp, 10.dp, 14.dp)
             background = GradientDrawable().apply {
                 cornerRadius = 18.dp.toFloat()
                 setColor(Color.argb(230, 24, 32, 40))
                 setStroke(1.dp, Color.argb(180, 255, 255, 255))
             }
             elevation = 8.dp.toFloat()
+            setOnClickListener {
+                openMainActivity()
+            }
             setOnTouchListener(DragTouchListener())
 
             val contentLayout = LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
-                setPadding(6.dp, 0, 20.dp, 0)
+                setPadding(6.dp, 0, 6.dp, 0)
             }
             val fixedPhaseLabelWidth: Int
             phaseTextView = TextView(context).apply {
@@ -92,37 +95,9 @@ class WalkingPhaseOverlay(private val context: Context) {
                 textSize = 16f
                 gravity = Gravity.CENTER
             }
-            val closeTextView = TextView(context).apply {
-                text = context.getString(R.string.close_overlay)
-                setTextColor(Color.WHITE)
-                textSize = 12f
-                typeface = Typeface.DEFAULT_BOLD
-                gravity = Gravity.CENTER
-                minWidth = 18.dp
-                minHeight = 18.dp
-                background = GradientDrawable().apply {
-                    cornerRadius = 9.dp.toFloat()
-                    setColor(Color.argb(80, 255, 255, 255))
-                }
-                setOnClickListener {
-                    openMainActivity()
-                }
-            }
-
             contentLayout.addView(remainingTextView)
             contentLayout.addView(phaseTextView)
             addView(contentLayout)
-            addView(
-                closeTextView,
-                FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.WRAP_CONTENT,
-                    FrameLayout.LayoutParams.WRAP_CONTENT,
-                    Gravity.TOP or Gravity.END,
-                ).apply {
-                    topMargin = (-1).dp
-                    rightMargin = 10.dp
-                },
-            )
         }
     }
 

@@ -35,10 +35,6 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         WalkingTimerController.updateSetCount(getApplication(), setCount)
     }
 
-    fun updateStartDelaySeconds(startDelaySeconds: Int) {
-        WalkingTimerController.updateStartDelaySeconds(getApplication(), startDelaySeconds)
-    }
-
     fun updateVibrationEnabled(isEnabled: Boolean) {
         WalkingTimerController.updateVibrationEnabled(getApplication(), isEnabled)
     }

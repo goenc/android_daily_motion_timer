@@ -18,14 +18,16 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
@@ -35,16 +37,18 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -63,31 +67,17 @@ class MainActivity : ComponentActivity() {
                 NotificationPermissionEffect()
                 val uiState by viewModel.uiState.collectAsState()
                 val displayState = rememberDisplayState(uiState)
-                var isSettingsOpen by rememberSaveable { mutableStateOf(false) }
+                var isSettingsScreenVisible by rememberSaveable { mutableStateOf(false) }
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
-                    topBar = {
-                        if (!isSettingsOpen) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .statusBarsPadding()
-                                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                                horizontalArrangement = Arrangement.End,
-                            ) {
-                                Button(onClick = { isSettingsOpen = true }) {
-                                    Text(text = stringResource(R.string.open_settings))
-                                }
-                            }
-                        }
-                    },
                 ) { innerPadding ->
-                    if (isSettingsOpen) {
-                        StartDelaySettingsScreen(
+                    if (isSettingsScreenVisible) {
+                        SettingsScreen(
                             uiState = displayState,
                             modifier = Modifier.padding(innerPadding),
-                            onStartDelayChange = viewModel::updateStartDelaySeconds,
-                            onBackClick = { isSettingsOpen = false },
+                            onAnnouncementVolumeChange = viewModel::updateAnnouncementVolume,
+                            onVibrationEnabledChange = viewModel::updateVibrationEnabled,
+                            onBackClick = { isSettingsScreenVisible = false },
                         )
                     } else {
                         TimerScreen(
@@ -104,9 +94,8 @@ class MainActivity : ComponentActivity() {
                             onFastPhaseDurationChange = viewModel::updateFastPhaseDurationSeconds,
                             onSlowPhaseDurationChange = viewModel::updateSlowPhaseDurationSeconds,
                             onSetCountChange = viewModel::updateSetCount,
-                            onAnnouncementVolumeChange = viewModel::updateAnnouncementVolume,
-                            onVibrationEnabledChange = viewModel::updateVibrationEnabled,
                             onOpenOverlaySettingsClick = ::openOverlaySettings,
+                            onOpenSettingsClick = { isSettingsScreenVisible = true },
                         )
                     }
                 }
@@ -157,14 +146,19 @@ private fun TimerScreen(
     onFastPhaseDurationChange: (Int) -> Unit,
     onSlowPhaseDurationChange: (Int) -> Unit,
     onSetCountChange: (Int) -> Unit,
-    onAnnouncementVolumeChange: (Float) -> Unit,
-    onVibrationEnabledChange: (Boolean) -> Unit,
     onOpenOverlaySettingsClick: () -> Unit,
+    onOpenSettingsClick: () -> Unit,
 ) {
     val context = LocalContext.current
+    val screenBackgroundColor = if (uiState.isPaused) {
+        Color(0xFFFFE0B2)
+    } else {
+        MaterialTheme.colorScheme.background
+    }
     Column(
         modifier = modifier
             .fillMaxSize()
+            .background(screenBackgroundColor)
             .padding(horizontal = 24.dp)
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.Top,
@@ -173,7 +167,8 @@ private fun TimerScreen(
         Spacer(modifier = Modifier.height(24.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.Start,
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
                 text = stringResource(
@@ -184,13 +179,15 @@ private fun TimerScreen(
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
             )
+            IconButton(onClick = onOpenSettingsClick) {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_settings_24),
+                    contentDescription = stringResource(R.string.settings_title),
+                )
+            }
         }
         Text(
-            text = if (uiState.isPreparingStart) {
-                stringResource(R.string.pre_start_countdown_label, uiState.formattedPreStartRemainingTime)
-            } else {
-                uiState.currentPhase.label
-            },
+            text = uiState.currentPhase.label,
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.Bold,
         )
@@ -229,7 +226,89 @@ private fun TimerScreen(
             enabled = !uiState.isActive,
             onSetCountChange = onSetCountChange,
         )
-        Spacer(modifier = Modifier.height(20.dp))
+        if (uiState.isActive && !Settings.canDrawOverlays(context)) {
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = stringResource(R.string.overlay_permission_explanation),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Button(
+                onClick = onOpenOverlaySettingsClick,
+                modifier = Modifier.padding(top = 8.dp),
+            ) {
+                Text(text = stringResource(R.string.open_overlay_settings))
+            }
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 32.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Button(
+                onClick = onStartPauseClick,
+                modifier = Modifier
+                    .weight(1f)
+                    .height(64.dp),
+            ) {
+                Text(
+                    text = if (uiState.isRunning) {
+                        stringResource(R.string.pause)
+                    } else if (uiState.isPaused) {
+                        stringResource(R.string.resume)
+                    } else {
+                        stringResource(R.string.start)
+                    },
+                    style = MaterialTheme.typography.titleLarge,
+                )
+            }
+            Button(
+                onClick = onStopClick,
+                modifier = Modifier
+                    .weight(1f)
+                    .height(64.dp),
+            ) {
+                Text(
+                    text = stringResource(R.string.stop),
+                    style = MaterialTheme.typography.titleLarge,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsScreen(
+    uiState: TimerUiState,
+    modifier: Modifier = Modifier,
+    onAnnouncementVolumeChange: (Float) -> Unit,
+    onVibrationEnabledChange: (Boolean) -> Unit,
+    onBackClick: () -> Unit,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(horizontal = 24.dp)
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.Top,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Spacer(modifier = Modifier.height(24.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.settings_title),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+            )
+            Button(onClick = onBackClick) {
+                Text(text = stringResource(R.string.settings_close))
+            }
+        }
+        Spacer(modifier = Modifier.height(24.dp))
         AnnouncementVolumeSlider(
             title = stringResource(R.string.announcement_volume_label),
             announcementVolume = uiState.announcementVolume,
@@ -263,76 +342,6 @@ private fun TimerScreen(
                 enabled = !uiState.isActive,
             )
         }
-        if (uiState.isActive && !Settings.canDrawOverlays(context)) {
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                text = stringResource(R.string.overlay_permission_explanation),
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            Button(
-                onClick = onOpenOverlaySettingsClick,
-                modifier = Modifier.padding(top = 8.dp),
-            ) {
-                Text(text = stringResource(R.string.open_overlay_settings))
-            }
-        }
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 32.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
-        ) {
-            Button(onClick = onStartPauseClick) {
-                Text(
-                    text = if (uiState.isRunning) {
-                        stringResource(R.string.pause)
-                    } else if (uiState.isPaused) {
-                        stringResource(R.string.resume)
-                    } else {
-                        stringResource(R.string.start)
-                    },
-                )
-            }
-            Button(onClick = onStopClick) {
-                Text(text = stringResource(R.string.stop))
-            }
-        }
-    }
-}
-
-@Composable
-private fun StartDelaySettingsScreen(
-    uiState: TimerUiState,
-    modifier: Modifier = Modifier,
-    onStartDelayChange: (Int) -> Unit,
-    onBackClick: () -> Unit,
-) {
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(horizontal = 24.dp)
-            .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.Top,
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Spacer(modifier = Modifier.height(16.dp))
-        Text(
-            text = stringResource(R.string.settings_title),
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
-        )
-        Spacer(modifier = Modifier.height(24.dp))
-        StartDelaySlider(
-            title = stringResource(R.string.start_delay_label),
-            selectedDelayLabel = uiState.formattedStartDelay,
-            selectedDelaySeconds = uiState.startDelaySeconds,
-            enabled = !uiState.isActive,
-            onDelayChange = onStartDelayChange,
-        )
-        Spacer(modifier = Modifier.height(24.dp))
-        Button(onClick = onBackClick) {
-            Text(text = stringResource(R.string.back_to_timer))
-        }
     }
 }
 
@@ -361,37 +370,6 @@ private fun SetCountSlider(
             },
             valueRange = 0f..SET_COUNT_OPTIONS.lastIndex.toFloat(),
             steps = SET_COUNT_OPTIONS.size - 2,
-            enabled = enabled,
-            modifier = Modifier.fillMaxWidth(),
-        )
-    }
-}
-
-@Composable
-private fun StartDelaySlider(
-    title: String,
-    selectedDelayLabel: String,
-    selectedDelaySeconds: Int,
-    enabled: Boolean,
-    onDelayChange: (Int) -> Unit,
-) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Text(
-            text = stringResource(R.string.setting_summary, title, selectedDelayLabel),
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-        )
-        Slider(
-            value = startDelaySliderIndex(selectedDelaySeconds).toFloat(),
-            onValueChange = { sliderValue ->
-                val optionIndex = sliderValue.roundToInt().coerceIn(
-                    0,
-                    START_DELAY_OPTIONS_SECONDS.lastIndex,
-                )
-                onDelayChange(START_DELAY_OPTIONS_SECONDS[optionIndex])
-            },
-            valueRange = 0f..START_DELAY_OPTIONS_SECONDS.lastIndex.toFloat(),
-            steps = START_DELAY_OPTIONS_SECONDS.size - 2,
             enabled = enabled,
             modifier = Modifier.fillMaxWidth(),
         )
@@ -513,9 +491,8 @@ private fun TimerScreenPreview() {
             onFastPhaseDurationChange = {},
             onSlowPhaseDurationChange = {},
             onSetCountChange = {},
-            onAnnouncementVolumeChange = {},
-            onVibrationEnabledChange = {},
             onOpenOverlaySettingsClick = {},
+            onOpenSettingsClick = {},
         )
     }
 }
@@ -527,11 +504,6 @@ private fun durationSliderIndex(durationSeconds: Int): Int {
 
 private fun setCountSliderIndex(setCount: Int): Int {
     return SET_COUNT_OPTIONS.indexOf(normalizeSetCount(setCount))
-        .coerceAtLeast(0)
-}
-
-private fun startDelaySliderIndex(startDelaySeconds: Int): Int {
-    return START_DELAY_OPTIONS_SECONDS.indexOf(normalizeStartDelaySeconds(startDelaySeconds))
         .coerceAtLeast(0)
 }
 

@@ -11,10 +11,10 @@ enum class WalkingPhase(val label: String, val announcement: String) {
 
 val PHASE_DURATION_OPTIONS_SECONDS = listOf(10, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330)
 val SET_COUNT_OPTIONS = listOf(5, 10, 15, 20)
-val START_DELAY_OPTIONS_SECONDS = listOf(10, 900, 1200, 1500, 1800)
+val START_DELAY_OPTIONS_SECONDS = listOf(0)
 const val DEFAULT_PHASE_DURATION_SECONDS = 180
 const val DEFAULT_SET_COUNT = 5
-const val DEFAULT_START_DELAY_SECONDS = 900
+const val DEFAULT_START_DELAY_SECONDS = 0
 const val DEFAULT_ANNOUNCEMENT_VOLUME = 1.0f
 
 data class TimerUiState(
@@ -64,12 +64,6 @@ data class TimerUiState(
 
     val isPreparingStart: Boolean
         get() = isRunning && sessionStartElapsedRealtime > 0L && preStartRemainingSeconds > 0
-
-    val formattedStartDelay: String
-        get() = formatPhaseDuration(startDelaySeconds)
-
-    val formattedPreStartRemainingTime: String
-        get() = formatRemainingDuration(preStartRemainingSeconds)
 
     fun resolveAt(nowElapsedRealtime: Long): TimerUiState {
         val normalizedFastDurationSeconds = normalizePhaseDurationSeconds(fastPhaseDurationSeconds)
