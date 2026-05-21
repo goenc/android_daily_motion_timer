@@ -150,10 +150,11 @@ private fun TimerScreen(
     onOpenSettingsClick: () -> Unit,
 ) {
     val context = LocalContext.current
-    val screenBackgroundColor = if (uiState.isPaused) {
-        Color(0xFFFFE0B2)
-    } else {
-        MaterialTheme.colorScheme.background
+    val activeTextColor = if (uiState.isRunning) Color.Black else Color.Unspecified
+    val screenBackgroundColor = when {
+        uiState.isRunning -> Color(0xFFC8E6C9)
+        uiState.isPaused -> Color(0xFFFFE0B2)
+        else -> MaterialTheme.colorScheme.background
     }
     Column(
         modifier = modifier
@@ -178,11 +179,13 @@ private fun TimerScreen(
                 ),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
+                color = activeTextColor,
             )
             IconButton(onClick = onOpenSettingsClick) {
                 Icon(
                     painter = painterResource(id = R.drawable.ic_settings_24),
                     contentDescription = stringResource(R.string.settings_title),
+                    tint = activeTextColor,
                 )
             }
         }
@@ -190,17 +193,20 @@ private fun TimerScreen(
             text = uiState.currentPhase.label,
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.Bold,
+            color = activeTextColor,
         )
         Text(
             text = uiState.formattedRemainingTime,
             fontSize = 56.sp,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(top = 16.dp),
+            color = activeTextColor,
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
             text = stringResource(R.string.elapsed_time_label, uiState.formattedElapsedTime),
             style = MaterialTheme.typography.titleMedium,
+            color = activeTextColor,
         )
         Spacer(modifier = Modifier.height(32.dp))
         PhaseDurationSlider(
@@ -208,6 +214,7 @@ private fun TimerScreen(
             selectedDurationLabel = uiState.formattedFastPhaseDuration,
             selectedDurationSeconds = uiState.fastPhaseDurationSeconds,
             enabled = !uiState.isActive,
+            textColor = activeTextColor,
             onDurationChange = onFastPhaseDurationChange,
         )
         Spacer(modifier = Modifier.height(20.dp))
@@ -216,6 +223,7 @@ private fun TimerScreen(
             selectedDurationLabel = uiState.formattedSlowPhaseDuration,
             selectedDurationSeconds = uiState.slowPhaseDurationSeconds,
             enabled = !uiState.isActive,
+            textColor = activeTextColor,
             onDurationChange = onSlowPhaseDurationChange,
         )
         Spacer(modifier = Modifier.height(20.dp))
@@ -224,6 +232,7 @@ private fun TimerScreen(
             selectedSetCountLabel = uiState.formattedSetCount,
             selectedSetCount = uiState.setCount,
             enabled = !uiState.isActive,
+            textColor = activeTextColor,
             onSetCountChange = onSetCountChange,
         )
         if (uiState.isActive && !Settings.canDrawOverlays(context)) {
@@ -231,6 +240,7 @@ private fun TimerScreen(
             Text(
                 text = stringResource(R.string.overlay_permission_explanation),
                 style = MaterialTheme.typography.bodyMedium,
+                color = activeTextColor,
             )
             Button(
                 onClick = onOpenOverlaySettingsClick,
@@ -351,6 +361,7 @@ private fun SetCountSlider(
     selectedSetCountLabel: String,
     selectedSetCount: Int,
     enabled: Boolean,
+    textColor: Color = Color.Unspecified,
     onSetCountChange: (Int) -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
@@ -358,6 +369,7 @@ private fun SetCountSlider(
             text = stringResource(R.string.setting_summary, title, selectedSetCountLabel),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
+            color = textColor,
         )
         Slider(
             value = setCountSliderIndex(selectedSetCount).toFloat(),
@@ -404,6 +416,7 @@ private fun PhaseLogEntryView(entry: PhaseTransitionLogEntry) {
 private fun AnnouncementVolumeSlider(
     title: String,
     announcementVolume: Float,
+    textColor: Color = Color.Unspecified,
     onVolumeChange: (Float) -> Unit,
 ) {
     val normalizedAnnouncementVolume = normalizeAnnouncementVolume(announcementVolume)
@@ -413,6 +426,7 @@ private fun AnnouncementVolumeSlider(
             text = stringResource(R.string.setting_summary, title, stringResource(R.string.announcement_volume_value, volumePercent)),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
+            color = textColor,
         )
         Slider(
             value = volumePercent.toFloat(),
@@ -433,6 +447,7 @@ private fun PhaseDurationSlider(
     selectedDurationLabel: String,
     selectedDurationSeconds: Int,
     enabled: Boolean,
+    textColor: Color = Color.Unspecified,
     onDurationChange: (Int) -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
@@ -440,6 +455,7 @@ private fun PhaseDurationSlider(
             text = stringResource(R.string.setting_summary, title, selectedDurationLabel),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
+            color = textColor,
         )
         Slider(
             value = durationSliderIndex(selectedDurationSeconds).toFloat(),
