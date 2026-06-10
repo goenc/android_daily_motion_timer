@@ -32,6 +32,7 @@ class WalkingTimerService : Service() {
 
     private var phaseTransitionJob: Job? = null
     private var phaseAnnouncementJob: Job? = null
+    private var phaseElapsedMilestoneJob: Job? = null
     private var countdownRefreshJob: Job? = null
     private lateinit var phaseAudioPlayer: PhaseAudioPlayer
     private lateinit var phaseOverlay: WalkingPhaseOverlay
@@ -88,6 +89,7 @@ class WalkingTimerService : Service() {
     override fun onDestroy() {
         cancelPhaseTransitionJob("service destroy")
         cancelPhaseAnnouncementJob("service destroy")
+        cancelPhaseElapsedMilestoneJob("service destroy")
         cancelCountdownRefreshJob("service destroy")
         val state = currentUiState()
         if (state.isActive) {
@@ -111,6 +113,7 @@ class WalkingTimerService : Service() {
             showNotification(state, promoteToForeground = !hasForegroundNotification)
             publishAndPersistState(state)
             scheduleNextPhaseTransition(nowElapsedRealtime)
+            schedulePhaseElapsedMilestones(monitoredState)
             return state
         }
 
@@ -147,6 +150,7 @@ class WalkingTimerService : Service() {
         }
         syncPhaseStartTracking(monitoredState.phaseStartNumber, markAsAnnounced = true)
         scheduleNextPhaseTransition(nowElapsedRealtime)
+        schedulePhaseElapsedMilestones(monitoredState)
         scheduleCountdownRefresh()
         return state
     }
@@ -171,6 +175,7 @@ class WalkingTimerService : Service() {
         }
         cancelPhaseTransitionJob("pause")
         cancelPhaseAnnouncementJob("pause")
+        cancelPhaseElapsedMilestoneJob("pause")
         cancelCountdownRefreshJob("pause")
         releaseWakeLockIfHeld()
 
@@ -187,6 +192,7 @@ class WalkingTimerService : Service() {
         }
         cancelPhaseTransitionJob("stop")
         cancelPhaseAnnouncementJob("stop")
+        cancelPhaseElapsedMilestoneJob("stop")
         cancelCountdownRefreshJob("stop")
         releaseWakeLockIfHeld()
         phaseAudioPlayer.stop()
@@ -279,6 +285,7 @@ class WalkingTimerService : Service() {
                 source = "phase transition",
                 logEntryId = logEntryId,
             )
+            schedulePhaseElapsedMilestones(monitoredState)
         }
         return monitoredState
     }
@@ -305,6 +312,12 @@ class WalkingTimerService : Service() {
             return
         }
         vibrateSafely()
+    }
+
+    private fun announcePhaseElapsedMilestone(phase: WalkingPhase, elapsedMinutes: Int) {
+        val currentAnnouncementVolume = synchronized(stateLock) { announcementVolume }
+        phaseAudioPlayer.setAnnouncementVolume(currentAnnouncementVolume)
+        phaseAudioPlayer.playElapsedMilestone(phase, elapsedMinutes)
     }
 
     private fun vibrateSafely() {
@@ -442,10 +455,12 @@ class WalkingTimerService : Service() {
         if (state.isRunning) {
             acquireWakeLockIfNeeded()
             scheduleNextPhaseTransition(nowElapsedRealtime)
+            schedulePhaseElapsedMilestones(monitoredState)
             scheduleCountdownRefresh()
         } else {
             cancelPhaseTransitionJob("restore inactive session")
             cancelPhaseAnnouncementJob("restore inactive session")
+            cancelPhaseElapsedMilestoneJob("restore inactive session")
             cancelCountdownRefreshJob("restore inactive session")
             releaseWakeLockIfHeld()
         }
@@ -746,6 +761,61 @@ class WalkingTimerService : Service() {
     }
 
     @Synchronized
+    private fun schedulePhaseElapsedMilestones(monitoredState: PhaseMonitorState) {
+        cancelPhaseElapsedMilestoneJob("reschedule phase elapsed milestones")
+        val state = monitoredState.state
+        if (!state.isRunning || monitoredState.phaseStartNumber == UNINITIALIZED_PHASE_START_NUMBER) {
+            return
+        }
+
+        phaseElapsedMilestoneJob = serviceScope.launch {
+            val phaseStartNumber = monitoredState.phaseStartNumber
+            val phase = state.currentPhase
+            for (milestoneSeconds in PHASE_ELAPSED_MILESTONE_SECONDS) {
+                val targetElapsedRealtime =
+                    monitoredState.currentPhaseStartElapsedRealtime +
+                        milestoneSeconds * 1_000L
+                if (targetElapsedRealtime >= monitoredState.nextPhaseTransitionElapsedRealtime) {
+                    continue
+                }
+
+                val delayMillis =
+                    targetElapsedRealtime - SystemClock.elapsedRealtime()
+                if (delayMillis <= 0L) {
+                    continue
+                }
+
+                delay(delayMillis)
+                val latestState = currentPhaseMonitorState(SystemClock.elapsedRealtime())
+                if (
+                    latestState.state.isRunning &&
+                    latestState.phaseStartNumber == phaseStartNumber &&
+                    latestState.state.currentPhase == phase
+                ) {
+                    val elapsedMinutes = milestoneSeconds / 60
+                    Log.i(
+                        TAG,
+                        "Dispatching ${phase.name} elapsed milestone minutes=$elapsedMinutes",
+                    )
+                    announcePhaseElapsedMilestone(
+                        phase = phase,
+                        elapsedMinutes = elapsedMinutes,
+                    )
+                }
+            }
+        }
+    }
+
+    @Synchronized
+    private fun cancelPhaseElapsedMilestoneJob(reason: String) {
+        phaseElapsedMilestoneJob?.let { job ->
+            Log.i(TAG, "Cancelling phase elapsed milestone job reason=$reason")
+            job.cancel()
+        }
+        phaseElapsedMilestoneJob = null
+    }
+
+    @Synchronized
     private fun scheduleCountdownRefresh() {
         cancelCountdownRefreshJob("reschedule countdown refresh")
         if (!isTimerRunning()) {
@@ -865,6 +935,7 @@ class WalkingTimerService : Service() {
         private const val TAG = "WalkingTimerService"
         private const val UNINITIALIZED_PHASE_START_NUMBER = -1L
         private const val COUNTDOWN_REFRESH_INTERVAL_MILLIS = 1_000L
+        private val PHASE_ELAPSED_MILESTONE_SECONDS = listOf(60, 120)
 
         fun createIntent(context: Context, action: String): Intent {
             return Intent(context, WalkingTimerService::class.java).apply {
