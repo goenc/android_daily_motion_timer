@@ -1,5 +1,6 @@
 # Commit Details
 
-- アプリで再生する raw wav 音声6件を約1.2倍に増幅
-- SoundPool の上限を超える設定変更ではなく、音声素材側のゲインを調整
+- 発話音量スライダーを0〜200%に拡張
+- 保存音量の上限を2.0へ拡張
+- SoundPoolではなくAudioTrackでwav PCMを再生時に増幅して200%を実効化
 - デバッグビルド成功: .\\gradlew.bat assembleDebug

@@ -431,11 +431,11 @@ private fun AnnouncementVolumeSlider(
         Slider(
             value = volumePercent.toFloat(),
             onValueChange = { sliderValue ->
-                val clampedPercent = sliderValue.roundToInt().coerceIn(0, 100)
+                val clampedPercent = sliderValue.roundToInt().coerceIn(0, 200)
                 onVolumeChange(clampedPercent / 100f)
             },
-            valueRange = 0f..100f,
-            steps = 99,
+            valueRange = 0f..200f,
+            steps = 199,
             modifier = Modifier.fillMaxWidth(),
         )
     }

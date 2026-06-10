@@ -2,12 +2,15 @@ package com.goenc.dailymotiontimer
 
 import android.content.Context
 import android.media.AudioAttributes
-import android.media.MediaMetadataRetriever
-import android.media.SoundPool
+import android.media.AudioFormat
+import android.media.AudioTrack
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.SystemClock
 import android.util.Log
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import kotlin.math.roundToInt
 
 internal class PhaseAudioPlayer(context: Context) {
     private val appContext = context.applicationContext
@@ -17,38 +20,20 @@ internal class PhaseAudioPlayer(context: Context) {
         .build()
     private val audioThread = HandlerThread("PhaseAudioPlayer").apply { start() }
     private val audioHandler = Handler(audioThread.looper)
-    private val soundPool =
-        SoundPool.Builder()
-            .setAudioAttributes(audioAttributes)
-            .setMaxStreams(1)
-            .build()
-            .also { pool ->
-                pool.setOnLoadCompleteListener { _, sampleId, status ->
-                    if (!isReleased) {
-                        audioHandler.post { handleSoundLoaded(sampleId, status) }
-                    }
-                }
-            }
-    private val soundIds = AudioCue.values().associateWith { cue ->
-        soundPool.load(appContext, cue.resId, 1)
-    }
-    private val playbackCleanupDelayMillis = AudioCue.values().associateWith { cue ->
-        resolvePlaybackCleanupDelayMillis(cue)
+    private val cueAudioData = AudioCue.values().associateWith { cue ->
+        WavAudioData.load(appContext, cue.resId)
     }
 
-    private val loadedCues = mutableSetOf<AudioCue>()
     private var announcementVolume = DEFAULT_ANNOUNCEMENT_VOLUME
-    private var currentStreamId = 0
+    private var currentAudioTrack: AudioTrack? = null
+    private var currentPlaybackId = 0
     private var pendingPlayback: PendingPlayback? = null
     private var pendingPlaybackCompleteRunnable: Runnable? = null
     @Volatile
     private var isReleased = false
 
     init {
-        Log.i(
-            TAG,
-            "Initialized SoundPool cueSoundIds=$soundIds",
-        )
+        Log.i(TAG, "Initialized AudioTrack cueAudioData=${cueAudioData.keys}")
     }
 
     fun play(phase: WalkingPhase, logEntryId: Long? = null) {
@@ -85,7 +70,7 @@ internal class PhaseAudioPlayer(context: Context) {
                     "at=${playRequestedElapsedRealtime} logEntryId=${logEntryId ?: "none"}",
             )
             pendingPlayback = PendingPlayback(cue = cue, logEntryId = logEntryId)
-            stopCurrentStreamLocked(reason = "replace with ${cue.description}")
+            stopCurrentPlaybackLocked(reason = "replace with ${cue.description}")
             startPendingPlayback()
         }
     }
@@ -96,9 +81,6 @@ internal class PhaseAudioPlayer(context: Context) {
         }
         audioHandler.post {
             announcementVolume = normalizeAnnouncementVolume(volume)
-            if (currentStreamId != 0) {
-                soundPool.setVolume(currentStreamId, announcementVolume, announcementVolume)
-            }
         }
     }
 
@@ -117,39 +99,10 @@ internal class PhaseAudioPlayer(context: Context) {
         }
         isReleased = true
         audioHandler.post {
-            Log.i(TAG, "Releasing SoundPool audio player")
+            Log.i(TAG, "Releasing AudioTrack audio player")
             stopInternal(reason = "release")
-            runCatching {
-                soundPool.release()
-            }.onFailure { error ->
-                Log.w(TAG, "Failed to release SoundPool", error)
-            }
             audioThread.quitSafely()
         }
-    }
-
-    private fun handleSoundLoaded(sampleId: Int, status: Int) {
-        val cue = soundIds.entries.firstOrNull { it.value == sampleId }?.key
-        if (cue == null) {
-            Log.w(TAG, "Ignored unknown sound load callback soundId=$sampleId status=$status")
-            return
-        }
-
-        if (status == 0) {
-            loadedCues += cue
-            Log.i(TAG, "Loaded ${cue.description} cue soundId=$sampleId")
-        } else {
-            loadedCues -= cue
-            Log.e(TAG, "Failed to load ${cue.description} cue soundId=$sampleId status=$status")
-        }
-
-        val queuedPlayback = pendingPlayback ?: return
-        if (!isCueLoaded(queuedPlayback.cue) || currentStreamId != 0) {
-            return
-        }
-
-        Log.i(TAG, "Retrying pending ${queuedPlayback.cue.description} cue after load completion")
-        startPendingPlayback()
     }
 
     private fun startPendingPlayback() {
@@ -159,53 +112,58 @@ internal class PhaseAudioPlayer(context: Context) {
 
         val queuedPlayback = pendingPlayback ?: return
         val cue = queuedPlayback.cue
-        if (!isCueLoaded(cue)) {
-            Log.i(TAG, "Keeping ${cue.description} cue pending because sound is not loaded yet")
-            return
-        }
+        val audioData = checkNotNull(cueAudioData[cue]) { "Missing audio data for ${cue.description}" }
+        val playbackVolume = announcementVolume
+        val amplifiedPcm = audioData.scaledPcm16(playbackVolume)
+        val audioTrack = AudioTrack.Builder()
+            .setAudioAttributes(audioAttributes)
+            .setAudioFormat(audioData.audioFormat())
+            .setTransferMode(AudioTrack.MODE_STATIC)
+            .setBufferSizeInBytes(amplifiedPcm.size)
+            .build()
 
-        val soundPoolPlayElapsedRealtime = SystemClock.elapsedRealtime()
-        val streamId =
-            soundPool.play(
-                cue.soundId(),
-                announcementVolume,
-                announcementVolume,
-                1,
-                0,
-                1f,
+        val bytesWritten = audioTrack.write(amplifiedPcm, 0, amplifiedPcm.size)
+        if (bytesWritten != amplifiedPcm.size) {
+            Log.w(
+                TAG,
+                "Failed to write full ${cue.description} cue bytes=$bytesWritten/${amplifiedPcm.size}",
             )
-        if (streamId == 0) {
-            Log.w(TAG, "Failed to start ${cue.description} cue playback")
-            this.pendingPlayback = null
+            audioTrack.release()
+            pendingPlayback = null
             return
         }
 
+        val playbackStartedElapsedRealtime = SystemClock.elapsedRealtime()
+        audioTrack.play()
         queuedPlayback.logEntryId?.let { entryId ->
             PhaseTransitionLogStore.markSoundPoolPlay(
                 entryId = entryId,
-                soundPoolPlayElapsedRealtime = soundPoolPlayElapsedRealtime,
+                soundPoolPlayElapsedRealtime = playbackStartedElapsedRealtime,
             )
         }
-        currentStreamId = streamId
+        currentAudioTrack = audioTrack
+        currentPlaybackId += 1
+        val playbackId = currentPlaybackId
         Log.i(
             TAG,
-            "Started ${cue.description} cue playback streamId=$streamId at=$soundPoolPlayElapsedRealtime",
+            "Started ${cue.description} cue playback playbackId=$playbackId " +
+                "volume=$playbackVolume at=$playbackStartedElapsedRealtime",
         )
-        schedulePlaybackCompletionLocked(cue, streamId)
+        schedulePlaybackCompletionLocked(cue, playbackId)
     }
 
-    private fun schedulePlaybackCompletionLocked(cue: AudioCue, streamId: Int) {
+    private fun schedulePlaybackCompletionLocked(cue: AudioCue, playbackId: Int) {
         cancelPendingPlaybackCompleteLocked()
         val completionRunnable = Runnable {
             pendingPlaybackCompleteRunnable = null
-            if (currentStreamId != streamId) {
+            if (currentPlaybackId != playbackId) {
                 return@Runnable
             }
-            currentStreamId = 0
+            releaseCurrentAudioTrackLocked()
             if (pendingPlayback?.cue == cue) {
                 pendingPlayback = null
             }
-            Log.i(TAG, "Completed ${cue.description} cue playback streamId=$streamId")
+            Log.i(TAG, "Completed ${cue.description} cue playback playbackId=$playbackId")
         }
         pendingPlaybackCompleteRunnable = completionRunnable
         audioHandler.postDelayed(completionRunnable, cue.playbackCleanupDelayMillis())
@@ -216,79 +174,163 @@ internal class PhaseAudioPlayer(context: Context) {
         pendingPlaybackCompleteRunnable = null
     }
 
-    private fun stopCurrentStreamLocked(reason: String) {
+    private fun stopCurrentPlaybackLocked(reason: String) {
         cancelPendingPlaybackCompleteLocked()
-        if (currentStreamId != 0) {
-            runCatching {
-                soundPool.stop(currentStreamId)
-            }.onFailure { error ->
-                Log.w(TAG, "Failed to stop cue streamId=$currentStreamId", error)
-            }
-            Log.i(TAG, "Stopped cue playback streamId=$currentStreamId reason=$reason")
-            currentStreamId = 0
+        val stoppedPlaybackId = currentPlaybackId
+        if (currentAudioTrack != null) {
+            releaseCurrentAudioTrackLocked()
+            Log.i(TAG, "Stopped cue playback playbackId=$stoppedPlaybackId reason=$reason")
         }
+    }
+
+    private fun releaseCurrentAudioTrackLocked() {
+        currentAudioTrack?.let { audioTrack ->
+            runCatching {
+                audioTrack.stop()
+            }.onFailure { error ->
+                Log.w(TAG, "Failed to stop cue playback", error)
+            }
+            runCatching {
+                audioTrack.release()
+            }.onFailure { error ->
+                Log.w(TAG, "Failed to release cue playback", error)
+            }
+        }
+        currentAudioTrack = null
     }
 
     private fun stopInternal(reason: String) {
         val queuedPlayback = pendingPlayback
-        this.pendingPlayback = null
-        stopCurrentStreamLocked(reason = reason)
+        pendingPlayback = null
+        stopCurrentPlaybackLocked(reason = reason)
         Log.i(
             TAG,
             "Stopped cue processing cue=${queuedPlayback?.cue?.description ?: "none"} reason=$reason",
         )
     }
 
-    private fun isCueLoaded(cue: AudioCue): Boolean {
-        return cue in loadedCues
-    }
-
-    private fun AudioCue.soundId(): Int {
-        return checkNotNull(soundIds[this]) { "Missing sound id for $description" }
-    }
-
     private fun AudioCue.playbackCleanupDelayMillis(): Long {
-        return checkNotNull(playbackCleanupDelayMillis[this]) { "Missing cleanup delay for $description" }
-    }
-
-    private fun resolvePlaybackCleanupDelayMillis(cue: AudioCue): Long {
-        return runCatching {
-            val retriever = MediaMetadataRetriever()
-            try {
-                appContext.resources.openRawResourceFd(cue.resId).use { descriptor ->
-                    checkNotNull(descriptor) { "Missing raw resource for ${cue.description}" }
-                    retriever.setDataSource(
-                        descriptor.fileDescriptor,
-                        descriptor.startOffset,
-                        descriptor.length,
-                    )
-                    val durationMillis =
-                        retriever
-                            .extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
-                            ?.toLongOrNull()
-                            ?: DEFAULT_PLAYBACK_CLEANUP_DELAY_MILLIS
-                    (durationMillis + PLAYBACK_CLEANUP_GRACE_MILLIS).coerceAtLeast(
-                        DEFAULT_PLAYBACK_CLEANUP_DELAY_MILLIS,
-                    )
-                }
-            } finally {
-                runCatching { retriever.release() }
-            }
-        }.onFailure { error ->
-            Log.w(TAG, "Using fallback cleanup delay for ${cue.description} cue", error)
-        }.getOrDefault(DEFAULT_PLAYBACK_CLEANUP_DELAY_MILLIS)
+        val audioData = checkNotNull(cueAudioData[this]) { "Missing audio data for $description" }
+        return (audioData.durationMillis + PLAYBACK_CLEANUP_GRACE_MILLIS)
+            .coerceAtLeast(DEFAULT_PLAYBACK_CLEANUP_DELAY_MILLIS)
     }
 
     private companion object {
         private const val TAG = "PhaseAudioPlayer"
         private const val DEFAULT_PLAYBACK_CLEANUP_DELAY_MILLIS = 1500L
         private const val PLAYBACK_CLEANUP_GRACE_MILLIS = 200L
+        private const val PCM_FORMAT = 1
+        private const val PCM_16_BIT = 16
     }
 
     private data class PendingPlayback(
         val cue: AudioCue,
         val logEntryId: Long?,
     )
+
+    private data class WavAudioData(
+        val sampleRate: Int,
+        val channelCount: Int,
+        val pcmData: ByteArray,
+    ) {
+        val durationMillis: Long
+            get() = (frameCount * 1_000L) / sampleRate
+
+        private val frameCount: Int
+            get() = pcmData.size / (channelCount * Short.SIZE_BYTES)
+
+        fun audioFormat(): AudioFormat {
+            val channelMask = if (channelCount == 1) {
+                AudioFormat.CHANNEL_OUT_MONO
+            } else {
+                AudioFormat.CHANNEL_OUT_STEREO
+            }
+            return AudioFormat.Builder()
+                .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                .setSampleRate(sampleRate)
+                .setChannelMask(channelMask)
+                .build()
+        }
+
+        fun scaledPcm16(volume: Float): ByteArray {
+            val normalizedVolume = normalizeAnnouncementVolume(volume)
+            val scaled = ByteArray(pcmData.size)
+            var index = 0
+            while (index < pcmData.size) {
+                val sample =
+                    (pcmData[index].toInt() and 0xFF) or
+                        (pcmData[index + 1].toInt() shl 8)
+                val clampedSample = (sample.toShort() * normalizedVolume)
+                    .roundToInt()
+                    .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
+                    .toShort()
+                scaled[index] = (clampedSample.toInt() and 0xFF).toByte()
+                scaled[index + 1] = ((clampedSample.toInt() shr 8) and 0xFF).toByte()
+                index += Short.SIZE_BYTES
+            }
+            return scaled
+        }
+
+        companion object {
+            fun load(context: Context, resId: Int): WavAudioData {
+                val bytes = context.resources.openRawResource(resId).use { input ->
+                    input.readBytes()
+                }
+                val buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
+                require(buffer.readAscii(4) == "RIFF") { "Unsupported wav: missing RIFF header" }
+                buffer.int
+                require(buffer.readAscii(4) == "WAVE") { "Unsupported wav: missing WAVE header" }
+
+                var audioFormat = 0
+                var channelCount = 0
+                var sampleRate = 0
+                var bitsPerSample = 0
+                var pcmData: ByteArray? = null
+
+                while (buffer.remaining() >= 8) {
+                    val chunkId = buffer.readAscii(4)
+                    val chunkSize = buffer.int
+                    val chunkStart = buffer.position()
+                    when (chunkId) {
+                        "fmt " -> {
+                            audioFormat = buffer.short.toInt()
+                            channelCount = buffer.short.toInt()
+                            sampleRate = buffer.int
+                            buffer.int
+                            buffer.short
+                            bitsPerSample = buffer.short.toInt()
+                        }
+
+                        "data" -> {
+                            val data = ByteArray(chunkSize)
+                            buffer.get(data)
+                            pcmData = data
+                        }
+                    }
+
+                    val nextChunkPosition = chunkStart + chunkSize + (chunkSize % 2)
+                    buffer.position(nextChunkPosition.coerceAtMost(buffer.limit()))
+                }
+
+                require(audioFormat == PCM_FORMAT) { "Unsupported wav format: $audioFormat" }
+                require(bitsPerSample == PCM_16_BIT) { "Unsupported wav bit depth: $bitsPerSample" }
+                require(channelCount == 1 || channelCount == 2) {
+                    "Unsupported wav channel count: $channelCount"
+                }
+                return WavAudioData(
+                    sampleRate = sampleRate,
+                    channelCount = channelCount,
+                    pcmData = checkNotNull(pcmData) { "Unsupported wav: missing data chunk" },
+                )
+            }
+
+            private fun ByteBuffer.readAscii(length: Int): String {
+                val bytes = ByteArray(length)
+                get(bytes)
+                return bytes.decodeToString()
+            }
+        }
+    }
 
     private enum class AudioCue(
         val phase: WalkingPhase,

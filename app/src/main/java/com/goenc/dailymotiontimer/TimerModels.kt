@@ -16,6 +16,7 @@ const val DEFAULT_PHASE_DURATION_SECONDS = 180
 const val DEFAULT_SET_COUNT = 5
 const val DEFAULT_START_DELAY_SECONDS = 0
 const val DEFAULT_ANNOUNCEMENT_VOLUME = 1.0f
+const val MAX_ANNOUNCEMENT_VOLUME = 2.0f
 
 data class TimerUiState(
     val currentPhase: WalkingPhase = WalkingPhase.Fast,
@@ -202,7 +203,7 @@ internal fun normalizeAnnouncementVolume(volume: Float): Float {
     return if (volume.isNaN() || volume.isInfinite()) {
         DEFAULT_ANNOUNCEMENT_VOLUME
     } else {
-        volume.coerceIn(0.0f, 1.0f)
+        volume.coerceIn(0.0f, MAX_ANNOUNCEMENT_VOLUME)
     }
 }
 
