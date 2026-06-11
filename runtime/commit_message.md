@@ -1,1 +1,1 @@
-Support 200 percent audio volume
+Add per-phase beep interval settings

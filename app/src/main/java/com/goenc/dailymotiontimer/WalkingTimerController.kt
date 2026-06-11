@@ -74,6 +74,26 @@ object WalkingTimerController {
         )
     }
 
+    fun updateFastPhaseBeepIntervalSeconds(context: Context, intervalSeconds: Int) {
+        updateIdlePhaseDurations(
+            context = context,
+            fastPhaseDurationSeconds = _uiState.value.fastPhaseDurationSeconds,
+            slowPhaseDurationSeconds = _uiState.value.slowPhaseDurationSeconds,
+            fastPhaseBeepIntervalSeconds = intervalSeconds,
+            slowPhaseBeepIntervalSeconds = _uiState.value.slowPhaseBeepIntervalSeconds,
+        )
+    }
+
+    fun updateSlowPhaseBeepIntervalSeconds(context: Context, intervalSeconds: Int) {
+        updateIdlePhaseDurations(
+            context = context,
+            fastPhaseDurationSeconds = _uiState.value.fastPhaseDurationSeconds,
+            slowPhaseDurationSeconds = _uiState.value.slowPhaseDurationSeconds,
+            fastPhaseBeepIntervalSeconds = _uiState.value.fastPhaseBeepIntervalSeconds,
+            slowPhaseBeepIntervalSeconds = intervalSeconds,
+        )
+    }
+
     fun updateSetCount(context: Context, setCount: Int) {
         val currentState = _uiState.value
         if (currentState.isActive) {
@@ -145,6 +165,8 @@ object WalkingTimerController {
         context: Context,
         fastPhaseDurationSeconds: Int,
         slowPhaseDurationSeconds: Int,
+        fastPhaseBeepIntervalSeconds: Int = _uiState.value.fastPhaseBeepIntervalSeconds,
+        slowPhaseBeepIntervalSeconds: Int = _uiState.value.slowPhaseBeepIntervalSeconds,
     ) {
         val currentState = _uiState.value
         if (currentState.isActive) {
@@ -157,6 +179,14 @@ object WalkingTimerController {
             elapsedSeconds = 0,
             fastPhaseDurationSeconds = normalizePhaseDurationSeconds(fastPhaseDurationSeconds),
             slowPhaseDurationSeconds = normalizePhaseDurationSeconds(slowPhaseDurationSeconds),
+            fastPhaseBeepIntervalSeconds = normalizeBeepIntervalSeconds(
+                fastPhaseBeepIntervalSeconds,
+                DEFAULT_FAST_BEEP_INTERVAL_SECONDS,
+            ),
+            slowPhaseBeepIntervalSeconds = normalizeBeepIntervalSeconds(
+                slowPhaseBeepIntervalSeconds,
+                DEFAULT_SLOW_BEEP_INTERVAL_SECONDS,
+            ),
             setCount = currentState.setCount,
             startDelaySeconds = currentState.startDelaySeconds,
             announcementVolume = currentState.announcementVolume,

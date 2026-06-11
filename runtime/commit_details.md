@@ -1,6 +1,7 @@
 # Commit Details
 
-- 発話音量スライダーを0〜200%に拡張
-- 保存音量の上限を2.0へ拡張
-- SoundPoolではなくAudioTrackでwav PCMを再生時に増幅して200%を実効化
-- デバッグビルド成功: .\\gradlew.bat assembleDebug
+- 速く歩く/ゆっくり歩くそれぞれのビープ間隔を設定画面に追加
+- ビープ音をフェーズ中に定期再生するスケジュールをサービスへ追加
+- ビープ間隔と音量の設定を既存の永続化ストアへ保存
+- デバッグビルド成功: `./gradlew assembleDebug`
+- ユニットテスト成功: `./gradlew testDebugUnitTest`

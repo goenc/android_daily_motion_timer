@@ -33,6 +33,7 @@ class WalkingTimerService : Service() {
     private var phaseTransitionJob: Job? = null
     private var phaseAnnouncementJob: Job? = null
     private var phaseElapsedMilestoneJob: Job? = null
+    private var phaseBeepJob: Job? = null
     private var countdownRefreshJob: Job? = null
     private lateinit var phaseAudioPlayer: PhaseAudioPlayer
     private lateinit var phaseOverlay: WalkingPhaseOverlay
@@ -42,6 +43,8 @@ class WalkingTimerService : Service() {
     private var pauseStartedElapsedRealtime = 0L
     private var fastDurationMillis = durationMillisFromSeconds(DEFAULT_PHASE_DURATION_SECONDS)
     private var slowDurationMillis = durationMillisFromSeconds(DEFAULT_PHASE_DURATION_SECONDS)
+    private var fastPhaseBeepIntervalSeconds = DEFAULT_FAST_BEEP_INTERVAL_SECONDS
+    private var slowPhaseBeepIntervalSeconds = DEFAULT_SLOW_BEEP_INTERVAL_SECONDS
     private var setCount = DEFAULT_SET_COUNT
     private var startDelaySeconds = DEFAULT_START_DELAY_SECONDS
     private var startPhase = WalkingPhase.Fast
@@ -90,6 +93,7 @@ class WalkingTimerService : Service() {
         cancelPhaseTransitionJob("service destroy")
         cancelPhaseAnnouncementJob("service destroy")
         cancelPhaseElapsedMilestoneJob("service destroy")
+        cancelPhaseBeepJob("service destroy")
         cancelCountdownRefreshJob("service destroy")
         val state = currentUiState()
         if (state.isActive) {
@@ -114,6 +118,7 @@ class WalkingTimerService : Service() {
             publishAndPersistState(state)
             scheduleNextPhaseTransition(nowElapsedRealtime)
             schedulePhaseElapsedMilestones(monitoredState)
+            schedulePhaseBeepPlayback(monitoredState)
             return state
         }
 
@@ -151,6 +156,7 @@ class WalkingTimerService : Service() {
         syncPhaseStartTracking(monitoredState.phaseStartNumber, markAsAnnounced = true)
         scheduleNextPhaseTransition(nowElapsedRealtime)
         schedulePhaseElapsedMilestones(monitoredState)
+        schedulePhaseBeepPlayback(monitoredState)
         scheduleCountdownRefresh()
         return state
     }
@@ -176,6 +182,7 @@ class WalkingTimerService : Service() {
         cancelPhaseTransitionJob("pause")
         cancelPhaseAnnouncementJob("pause")
         cancelPhaseElapsedMilestoneJob("pause")
+        cancelPhaseBeepJob("pause")
         cancelCountdownRefreshJob("pause")
         releaseWakeLockIfHeld()
 
@@ -193,6 +200,7 @@ class WalkingTimerService : Service() {
         cancelPhaseTransitionJob("stop")
         cancelPhaseAnnouncementJob("stop")
         cancelPhaseElapsedMilestoneJob("stop")
+        cancelPhaseBeepJob("stop")
         cancelCountdownRefreshJob("stop")
         releaseWakeLockIfHeld()
         phaseAudioPlayer.stop()
@@ -286,6 +294,7 @@ class WalkingTimerService : Service() {
                 logEntryId = logEntryId,
             )
             schedulePhaseElapsedMilestones(monitoredState)
+            schedulePhaseBeepPlayback(monitoredState)
         }
         return monitoredState
     }
@@ -456,11 +465,13 @@ class WalkingTimerService : Service() {
             acquireWakeLockIfNeeded()
             scheduleNextPhaseTransition(nowElapsedRealtime)
             schedulePhaseElapsedMilestones(monitoredState)
+            schedulePhaseBeepPlayback(monitoredState)
             scheduleCountdownRefresh()
         } else {
             cancelPhaseTransitionJob("restore inactive session")
             cancelPhaseAnnouncementJob("restore inactive session")
             cancelPhaseElapsedMilestoneJob("restore inactive session")
+            cancelPhaseBeepJob("restore inactive session")
             cancelCountdownRefreshJob("restore inactive session")
             releaseWakeLockIfHeld()
         }
@@ -489,6 +500,8 @@ class WalkingTimerService : Service() {
                 if (persistedState.isPaused) persistedState.pauseStartedElapsedRealtime else 0L
             fastDurationMillis = persistedState.fastDurationMillis
             slowDurationMillis = persistedState.slowDurationMillis
+            fastPhaseBeepIntervalSeconds = persistedState.fastPhaseBeepIntervalSeconds
+            slowPhaseBeepIntervalSeconds = persistedState.slowPhaseBeepIntervalSeconds
             setCount = persistedState.setCount
             startDelaySeconds = persistedState.startDelaySeconds
             startPhase = persistedState.startPhase
@@ -508,6 +521,8 @@ class WalkingTimerService : Service() {
         synchronized(stateLock) {
             fastDurationMillis = persistedState.fastDurationMillis
             slowDurationMillis = persistedState.slowDurationMillis
+            fastPhaseBeepIntervalSeconds = persistedState.fastPhaseBeepIntervalSeconds
+            slowPhaseBeepIntervalSeconds = persistedState.slowPhaseBeepIntervalSeconds
             setCount = persistedState.setCount
             startDelaySeconds = persistedState.startDelaySeconds
             announcementVolume = restoredAnnouncementVolume
@@ -525,6 +540,8 @@ class WalkingTimerService : Service() {
                 pauseStartedElapsedRealtime = if (isPaused) pauseStartedElapsedRealtime else 0L,
                 fastDurationMillis = fastDurationMillis,
                 slowDurationMillis = slowDurationMillis,
+                fastPhaseBeepIntervalSeconds = fastPhaseBeepIntervalSeconds,
+                slowPhaseBeepIntervalSeconds = slowPhaseBeepIntervalSeconds,
                 setCount = setCount,
                 startDelaySeconds = startDelaySeconds,
                 startPhase = startPhase,
@@ -552,6 +569,7 @@ class WalkingTimerService : Service() {
                 phaseStartNumber = UNINITIALIZED_PHASE_START_NUMBER,
                 currentPhaseStartElapsedRealtime = 0L,
                 nextPhaseTransitionElapsedRealtime = 0L,
+                phaseElapsedMillis = 0L,
             )
         }
         if (baseState.sessionStartElapsedRealtime > nowElapsedRealtime) {
@@ -566,6 +584,7 @@ class WalkingTimerService : Service() {
                 currentPhaseStartElapsedRealtime = baseState.sessionStartElapsedRealtime,
                 nextPhaseTransitionElapsedRealtime =
                     baseState.sessionStartElapsedRealtime + firstPhaseDurationMillis,
+                phaseElapsedMillis = 0L,
             )
         }
         val referenceElapsedRealtime = phaseReferenceElapsedRealtime(baseState, nowElapsedRealtime)
@@ -588,6 +607,7 @@ class WalkingTimerService : Service() {
                 (referenceElapsedRealtime - sessionSnapshot.phaseElapsedMillis).coerceAtLeast(0L),
             nextPhaseTransitionElapsedRealtime =
                 referenceElapsedRealtime + sessionSnapshot.remainingPhaseMillis,
+            phaseElapsedMillis = sessionSnapshot.phaseElapsedMillis,
         )
     }
 
@@ -595,6 +615,8 @@ class WalkingTimerService : Service() {
         return TimerUiState(
             fastPhaseDurationSeconds = durationSecondsFromMillis(fastDurationMillis),
             slowPhaseDurationSeconds = durationSecondsFromMillis(slowDurationMillis),
+            fastPhaseBeepIntervalSeconds = fastPhaseBeepIntervalSeconds,
+            slowPhaseBeepIntervalSeconds = slowPhaseBeepIntervalSeconds,
             setCount = setCount,
             startDelaySeconds = startDelaySeconds,
             announcementVolume = announcementVolume,
@@ -816,6 +838,57 @@ class WalkingTimerService : Service() {
     }
 
     @Synchronized
+    private fun schedulePhaseBeepPlayback(monitoredState: PhaseMonitorState) {
+        cancelPhaseBeepJob("reschedule phase beeps")
+        val state = monitoredState.state
+        if (!state.isRunning || monitoredState.phaseStartNumber == UNINITIALIZED_PHASE_START_NUMBER) {
+            return
+        }
+
+        val phase = state.currentPhase
+        val intervalSeconds = phaseBeepIntervalSeconds(phase)
+        val intervalMillis = intervalSeconds * 1_000L
+        if (intervalMillis <= 0L) {
+            return
+        }
+
+        val initialDelayMillis = nextPhaseBeepDelayMillis(
+            phaseElapsedMillis = monitoredState.phaseElapsedMillis,
+            intervalMillis = intervalMillis,
+        )
+        phaseBeepJob = serviceScope.launch {
+            val phaseStartNumber = monitoredState.phaseStartNumber
+            var nextDelayMillis = initialDelayMillis
+            while (true) {
+                delay(nextDelayMillis)
+                val latestState = currentPhaseMonitorState(SystemClock.elapsedRealtime())
+                if (
+                    !latestState.state.isRunning ||
+                    latestState.phaseStartNumber != phaseStartNumber ||
+                    latestState.state.currentPhase != phase
+                ) {
+                    return@launch
+                }
+                Log.i(
+                    TAG,
+                    "Dispatching ${phase.name} phase beep intervalSeconds=$intervalSeconds",
+                )
+                phaseAudioPlayer.playBeep()
+                nextDelayMillis = intervalMillis
+            }
+        }
+    }
+
+    @Synchronized
+    private fun cancelPhaseBeepJob(reason: String) {
+        phaseBeepJob?.let { job ->
+            Log.i(TAG, "Cancelling phase beep job reason=$reason")
+            job.cancel()
+        }
+        phaseBeepJob = null
+    }
+
+    @Synchronized
     private fun scheduleCountdownRefresh() {
         cancelCountdownRefreshJob("reschedule countdown refresh")
         if (!isTimerRunning()) {
@@ -838,6 +911,20 @@ class WalkingTimerService : Service() {
             job.cancel()
         }
         countdownRefreshJob = null
+    }
+
+    private fun phaseBeepIntervalSeconds(phase: WalkingPhase): Int {
+        return synchronized(stateLock) {
+            if (phase == WalkingPhase.Fast) fastPhaseBeepIntervalSeconds else slowPhaseBeepIntervalSeconds
+        }
+    }
+
+    private fun nextPhaseBeepDelayMillis(phaseElapsedMillis: Long, intervalMillis: Long): Long {
+        if (intervalMillis <= 0L) {
+            return 0L
+        }
+        val remainder = phaseElapsedMillis % intervalMillis
+        return if (remainder == 0L) intervalMillis else (intervalMillis - remainder).coerceAtLeast(1L)
     }
 
     private fun createWakeLock(): PowerManager.WakeLock? {
@@ -961,5 +1048,6 @@ class WalkingTimerService : Service() {
         val phaseStartNumber: Long,
         val currentPhaseStartElapsedRealtime: Long,
         val nextPhaseTransitionElapsedRealtime: Long,
+        val phaseElapsedMillis: Long,
     )
 }

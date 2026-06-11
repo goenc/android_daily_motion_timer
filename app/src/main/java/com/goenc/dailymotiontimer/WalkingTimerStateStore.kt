@@ -11,6 +11,8 @@ internal object WalkingTimerStateStore {
     private const val KEY_PAUSE_STARTED_ELAPSED_REALTIME = "pause_started_elapsed_realtime"
     private const val KEY_FAST_DURATION_MILLIS = "fast_duration_millis"
     private const val KEY_SLOW_DURATION_MILLIS = "slow_duration_millis"
+    private const val KEY_FAST_BEEP_INTERVAL_SECONDS = "fast_beep_interval_seconds"
+    private const val KEY_SLOW_BEEP_INTERVAL_SECONDS = "slow_beep_interval_seconds"
     private const val KEY_SET_COUNT = "set_count"
     private const val KEY_START_DELAY_SECONDS = "start_delay_seconds"
     private const val KEY_START_PHASE = "start_phase"
@@ -53,6 +55,14 @@ internal object WalkingTimerStateStore {
                     KEY_SLOW_DURATION_MILLIS,
                     durationMillisFromSeconds(DEFAULT_PHASE_DURATION_SECONDS),
                 ),
+                fastPhaseBeepIntervalSeconds = normalizeBeepIntervalSeconds(
+                    prefs.getInt(KEY_FAST_BEEP_INTERVAL_SECONDS, DEFAULT_FAST_BEEP_INTERVAL_SECONDS),
+                    DEFAULT_FAST_BEEP_INTERVAL_SECONDS,
+                ),
+                slowPhaseBeepIntervalSeconds = normalizeBeepIntervalSeconds(
+                    prefs.getInt(KEY_SLOW_BEEP_INTERVAL_SECONDS, DEFAULT_SLOW_BEEP_INTERVAL_SECONDS),
+                    DEFAULT_SLOW_BEEP_INTERVAL_SECONDS,
+                ),
                 setCount = normalizeSetCount(prefs.getInt(KEY_SET_COUNT, DEFAULT_SET_COUNT)),
                 startDelaySeconds = normalizeStartDelaySeconds(
                     prefs.getInt(KEY_START_DELAY_SECONDS, DEFAULT_START_DELAY_SECONDS),
@@ -94,6 +104,20 @@ internal object WalkingTimerStateStore {
             )
             .putLong(KEY_FAST_DURATION_MILLIS, normalizePhaseDurationMillis(state.fastDurationMillis))
             .putLong(KEY_SLOW_DURATION_MILLIS, normalizePhaseDurationMillis(state.slowDurationMillis))
+            .putInt(
+                KEY_FAST_BEEP_INTERVAL_SECONDS,
+                normalizeBeepIntervalSeconds(
+                    state.fastPhaseBeepIntervalSeconds,
+                    DEFAULT_FAST_BEEP_INTERVAL_SECONDS,
+                ),
+            )
+            .putInt(
+                KEY_SLOW_BEEP_INTERVAL_SECONDS,
+                normalizeBeepIntervalSeconds(
+                    state.slowPhaseBeepIntervalSeconds,
+                    DEFAULT_SLOW_BEEP_INTERVAL_SECONDS,
+                ),
+            )
             .putInt(KEY_SET_COUNT, normalizeSetCount(state.setCount))
             .putInt(KEY_START_DELAY_SECONDS, normalizeStartDelaySeconds(state.startDelaySeconds))
             .putString(KEY_START_PHASE, state.startPhase.name)
@@ -183,6 +207,8 @@ internal object WalkingTimerStateStore {
             pauseStartedElapsedRealtime = if (isPaused && hasSession) nowElapsedRealtime else 0L,
             fastDurationMillis = durationMillisFromSeconds(fastPhaseDurationSeconds),
             slowDurationMillis = durationMillisFromSeconds(slowPhaseDurationSeconds),
+            fastPhaseBeepIntervalSeconds = DEFAULT_FAST_BEEP_INTERVAL_SECONDS,
+            slowPhaseBeepIntervalSeconds = DEFAULT_SLOW_BEEP_INTERVAL_SECONDS,
             setCount = DEFAULT_SET_COUNT,
             startDelaySeconds = DEFAULT_START_DELAY_SECONDS,
             startPhase = WalkingPhase.Fast,

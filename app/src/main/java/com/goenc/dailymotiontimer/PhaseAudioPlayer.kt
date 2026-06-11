@@ -10,6 +10,8 @@ import android.os.SystemClock
 import android.util.Log
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlin.math.PI
+import kotlin.math.sin
 import kotlin.math.roundToInt
 
 internal class PhaseAudioPlayer(context: Context) {
@@ -23,6 +25,7 @@ internal class PhaseAudioPlayer(context: Context) {
     private val cueAudioData = AudioCue.values().associateWith { cue ->
         WavAudioData.load(appContext, cue.resId)
     }
+    private val beepAudioData = WavAudioData.generateBeep()
 
     private var announcementVolume = DEFAULT_ANNOUNCEMENT_VOLUME
     private var currentAudioTrack: AudioTrack? = null
@@ -51,9 +54,25 @@ internal class PhaseAudioPlayer(context: Context) {
         playCue(cue = cue, logEntryId = null)
     }
 
+    fun playBeep() {
+        playAudioData(
+            audioData = beepAudioData,
+            description = "Phase beep",
+            logEntryId = null,
+        )
+    }
+
     private fun playCue(cue: AudioCue, logEntryId: Long?) {
+        playAudioData(
+            audioData = checkNotNull(cueAudioData[cue]) { "Missing audio data for ${cue.description}" },
+            description = cue.description,
+            logEntryId = logEntryId,
+        )
+    }
+
+    private fun playAudioData(audioData: WavAudioData, description: String, logEntryId: Long?) {
         if (isReleased) {
-            Log.w(TAG, "Ignoring ${cue.description} cue because audio player is released")
+            Log.w(TAG, "Ignoring $description cue because audio player is released")
             return
         }
         audioHandler.post {
@@ -66,11 +85,11 @@ internal class PhaseAudioPlayer(context: Context) {
             }
             Log.i(
                 TAG,
-                "Received ${cue.description} cue playback request " +
+                "Received $description cue playback request " +
                     "at=${playRequestedElapsedRealtime} logEntryId=${logEntryId ?: "none"}",
             )
-            pendingPlayback = PendingPlayback(cue = cue, logEntryId = logEntryId)
-            stopCurrentPlaybackLocked(reason = "replace with ${cue.description}")
+            pendingPlayback = PendingPlayback(audioData = audioData, description = description, logEntryId = logEntryId)
+            stopCurrentPlaybackLocked(reason = "replace with $description")
             startPendingPlayback()
         }
     }
@@ -111,8 +130,7 @@ internal class PhaseAudioPlayer(context: Context) {
         }
 
         val queuedPlayback = pendingPlayback ?: return
-        val cue = queuedPlayback.cue
-        val audioData = checkNotNull(cueAudioData[cue]) { "Missing audio data for ${cue.description}" }
+        val audioData = queuedPlayback.audioData
         val playbackVolume = announcementVolume
         val amplifiedPcm = audioData.scaledPcm16(playbackVolume)
         val audioTrack = AudioTrack.Builder()
@@ -126,7 +144,7 @@ internal class PhaseAudioPlayer(context: Context) {
         if (bytesWritten != amplifiedPcm.size) {
             Log.w(
                 TAG,
-                "Failed to write full ${cue.description} cue bytes=$bytesWritten/${amplifiedPcm.size}",
+                "Failed to write full ${queuedPlayback.description} cue bytes=$bytesWritten/${amplifiedPcm.size}",
             )
             audioTrack.release()
             pendingPlayback = null
@@ -146,13 +164,13 @@ internal class PhaseAudioPlayer(context: Context) {
         val playbackId = currentPlaybackId
         Log.i(
             TAG,
-            "Started ${cue.description} cue playback playbackId=$playbackId " +
+            "Started ${queuedPlayback.description} cue playback playbackId=$playbackId " +
                 "volume=$playbackVolume at=$playbackStartedElapsedRealtime",
         )
-        schedulePlaybackCompletionLocked(cue, playbackId)
+        schedulePlaybackCompletionLocked(queuedPlayback, playbackId)
     }
 
-    private fun schedulePlaybackCompletionLocked(cue: AudioCue, playbackId: Int) {
+    private fun schedulePlaybackCompletionLocked(queuedPlayback: PendingPlayback, playbackId: Int) {
         cancelPendingPlaybackCompleteLocked()
         val completionRunnable = Runnable {
             pendingPlaybackCompleteRunnable = null
@@ -160,13 +178,13 @@ internal class PhaseAudioPlayer(context: Context) {
                 return@Runnable
             }
             releaseCurrentAudioTrackLocked()
-            if (pendingPlayback?.cue == cue) {
+            if (pendingPlayback === queuedPlayback) {
                 pendingPlayback = null
             }
-            Log.i(TAG, "Completed ${cue.description} cue playback playbackId=$playbackId")
+            Log.i(TAG, "Completed ${queuedPlayback.description} cue playback playbackId=$playbackId")
         }
         pendingPlaybackCompleteRunnable = completionRunnable
-        audioHandler.postDelayed(completionRunnable, cue.playbackCleanupDelayMillis())
+        audioHandler.postDelayed(completionRunnable, queuedPlayback.audioData.playbackCleanupDelayMillis())
     }
 
     private fun cancelPendingPlaybackCompleteLocked() {
@@ -205,13 +223,12 @@ internal class PhaseAudioPlayer(context: Context) {
         stopCurrentPlaybackLocked(reason = reason)
         Log.i(
             TAG,
-            "Stopped cue processing cue=${queuedPlayback?.cue?.description ?: "none"} reason=$reason",
+            "Stopped cue processing cue=${queuedPlayback?.description ?: "none"} reason=$reason",
         )
     }
 
-    private fun AudioCue.playbackCleanupDelayMillis(): Long {
-        val audioData = checkNotNull(cueAudioData[this]) { "Missing audio data for $description" }
-        return (audioData.durationMillis + PLAYBACK_CLEANUP_GRACE_MILLIS)
+    private fun WavAudioData.playbackCleanupDelayMillis(): Long {
+        return (durationMillis + PLAYBACK_CLEANUP_GRACE_MILLIS)
             .coerceAtLeast(DEFAULT_PLAYBACK_CLEANUP_DELAY_MILLIS)
     }
 
@@ -224,7 +241,8 @@ internal class PhaseAudioPlayer(context: Context) {
     }
 
     private data class PendingPlayback(
-        val cue: AudioCue,
+        val audioData: WavAudioData,
+        val description: String,
         val logEntryId: Long?,
     )
 
@@ -272,6 +290,44 @@ internal class PhaseAudioPlayer(context: Context) {
         }
 
         companion object {
+            private const val DEFAULT_SAMPLE_RATE = 44_100
+            private const val DEFAULT_BEEP_DURATION_MILLIS = 120
+            private const val DEFAULT_BEEP_FREQUENCY_HZ = 880.0
+            private const val BEEP_ENVELOPE_PORTION = 0.15
+
+            fun generateBeep(
+                sampleRate: Int = DEFAULT_SAMPLE_RATE,
+                durationMillis: Int = DEFAULT_BEEP_DURATION_MILLIS,
+                frequencyHz: Double = DEFAULT_BEEP_FREQUENCY_HZ,
+            ): WavAudioData {
+                val frameCount = ((sampleRate * durationMillis) / 1_000.0).roundToInt().coerceAtLeast(1)
+                val pcmData = ByteArray(frameCount * Short.SIZE_BYTES)
+                val attackFrames = (frameCount * BEEP_ENVELOPE_PORTION).roundToInt().coerceAtLeast(1)
+                val releaseFrames = attackFrames
+                for (frameIndex in 0 until frameCount) {
+                    val timeSeconds = frameIndex.toDouble() / sampleRate.toDouble()
+                    val envelope = when {
+                        frameIndex < attackFrames ->
+                            frameIndex.toDouble() / attackFrames.toDouble()
+                        frameIndex >= frameCount - releaseFrames ->
+                            (frameCount - frameIndex).toDouble() / releaseFrames.toDouble()
+                        else -> 1.0
+                    }.coerceIn(0.0, 1.0)
+                    val sample = (sin(2.0 * PI * frequencyHz * timeSeconds) * Short.MAX_VALUE * envelope)
+                        .roundToInt()
+                        .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
+                        .toShort()
+                    val baseIndex = frameIndex * Short.SIZE_BYTES
+                    pcmData[baseIndex] = (sample.toInt() and 0xFF).toByte()
+                    pcmData[baseIndex + 1] = ((sample.toInt() shr 8) and 0xFF).toByte()
+                }
+                return WavAudioData(
+                    sampleRate = sampleRate,
+                    channelCount = 1,
+                    pcmData = pcmData,
+                )
+            }
+
             fun load(context: Context, resId: Int): WavAudioData {
                 val bytes = context.resources.openRawResource(resId).use { input ->
                     input.readBytes()
@@ -389,4 +445,5 @@ internal class PhaseAudioPlayer(context: Context) {
             }
         }
     }
+
 }

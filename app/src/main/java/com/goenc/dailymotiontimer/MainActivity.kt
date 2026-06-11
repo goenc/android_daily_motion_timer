@@ -31,6 +31,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderColors
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -77,6 +79,8 @@ class MainActivity : ComponentActivity() {
                             modifier = Modifier.padding(innerPadding),
                             onAnnouncementVolumeChange = viewModel::updateAnnouncementVolume,
                             onVibrationEnabledChange = viewModel::updateVibrationEnabled,
+                            onFastPhaseBeepIntervalChange = viewModel::updateFastPhaseBeepIntervalSeconds,
+                            onSlowPhaseBeepIntervalChange = viewModel::updateSlowPhaseBeepIntervalSeconds,
                             onBackClick = { isSettingsScreenVisible = false },
                         )
                     } else {
@@ -151,6 +155,13 @@ private fun TimerScreen(
 ) {
     val context = LocalContext.current
     val activeTextColor = if (uiState.isRunning) Color.Black else Color.Unspecified
+    val runningSliderColors = SliderDefaults.colors(
+        disabledThumbColor = Color.Black,
+        disabledActiveTrackColor = Color.Black,
+        disabledInactiveTrackColor = Color.DarkGray,
+        disabledActiveTickColor = Color.Black,
+        disabledInactiveTickColor = Color.DarkGray,
+    )
     val screenBackgroundColor = when {
         uiState.isRunning -> Color(0xFFC8E6C9)
         uiState.isPaused -> Color(0xFFFFE0B2)
@@ -215,6 +226,7 @@ private fun TimerScreen(
             selectedDurationSeconds = uiState.fastPhaseDurationSeconds,
             enabled = !uiState.isActive,
             textColor = activeTextColor,
+            sliderColors = if (uiState.isRunning) runningSliderColors else SliderDefaults.colors(),
             onDurationChange = onFastPhaseDurationChange,
         )
         Spacer(modifier = Modifier.height(20.dp))
@@ -224,6 +236,7 @@ private fun TimerScreen(
             selectedDurationSeconds = uiState.slowPhaseDurationSeconds,
             enabled = !uiState.isActive,
             textColor = activeTextColor,
+            sliderColors = if (uiState.isRunning) runningSliderColors else SliderDefaults.colors(),
             onDurationChange = onSlowPhaseDurationChange,
         )
         Spacer(modifier = Modifier.height(20.dp))
@@ -233,6 +246,7 @@ private fun TimerScreen(
             selectedSetCount = uiState.setCount,
             enabled = !uiState.isActive,
             textColor = activeTextColor,
+            sliderColors = if (uiState.isRunning) runningSliderColors else SliderDefaults.colors(),
             onSetCountChange = onSetCountChange,
         )
         if (uiState.isActive && !Settings.canDrawOverlays(context)) {
@@ -293,6 +307,8 @@ private fun SettingsScreen(
     modifier: Modifier = Modifier,
     onAnnouncementVolumeChange: (Float) -> Unit,
     onVibrationEnabledChange: (Boolean) -> Unit,
+    onFastPhaseBeepIntervalChange: (Int) -> Unit,
+    onSlowPhaseBeepIntervalChange: (Int) -> Unit,
     onBackClick: () -> Unit,
 ) {
     Column(
@@ -323,6 +339,24 @@ private fun SettingsScreen(
             title = stringResource(R.string.announcement_volume_label),
             announcementVolume = uiState.announcementVolume,
             onVolumeChange = onAnnouncementVolumeChange,
+        )
+        Spacer(modifier = Modifier.height(20.dp))
+        BeepIntervalSlider(
+            title = stringResource(R.string.fast_phase_beep_interval_label),
+            selectedIntervalLabel = uiState.formattedFastPhaseBeepInterval,
+            selectedIntervalSeconds = uiState.fastPhaseBeepIntervalSeconds,
+            enabled = !uiState.isActive,
+            textColor = Color.Unspecified,
+            onIntervalChange = onFastPhaseBeepIntervalChange,
+        )
+        Spacer(modifier = Modifier.height(20.dp))
+        BeepIntervalSlider(
+            title = stringResource(R.string.slow_phase_beep_interval_label),
+            selectedIntervalLabel = uiState.formattedSlowPhaseBeepInterval,
+            selectedIntervalSeconds = uiState.slowPhaseBeepIntervalSeconds,
+            enabled = !uiState.isActive,
+            textColor = Color.Unspecified,
+            onIntervalChange = onSlowPhaseBeepIntervalChange,
         )
         Row(
             modifier = Modifier
@@ -362,6 +396,7 @@ private fun SetCountSlider(
     selectedSetCount: Int,
     enabled: Boolean,
     textColor: Color = Color.Unspecified,
+    sliderColors: SliderColors = SliderDefaults.colors(),
     onSetCountChange: (Int) -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
@@ -383,6 +418,7 @@ private fun SetCountSlider(
             valueRange = 0f..SET_COUNT_OPTIONS.lastIndex.toFloat(),
             steps = SET_COUNT_OPTIONS.size - 2,
             enabled = enabled,
+            colors = sliderColors,
             modifier = Modifier.fillMaxWidth(),
         )
     }
@@ -448,6 +484,7 @@ private fun PhaseDurationSlider(
     selectedDurationSeconds: Int,
     enabled: Boolean,
     textColor: Color = Color.Unspecified,
+    sliderColors: SliderColors = SliderDefaults.colors(),
     onDurationChange: (Int) -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
@@ -468,6 +505,40 @@ private fun PhaseDurationSlider(
             },
             valueRange = 0f..PHASE_DURATION_OPTIONS_SECONDS.lastIndex.toFloat(),
             steps = PHASE_DURATION_OPTIONS_SECONDS.size - 2,
+            enabled = enabled,
+            colors = sliderColors,
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
+@Composable
+private fun BeepIntervalSlider(
+    title: String,
+    selectedIntervalLabel: String,
+    selectedIntervalSeconds: Int,
+    enabled: Boolean,
+    textColor: Color = Color.Unspecified,
+    onIntervalChange: (Int) -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = stringResource(R.string.setting_summary, title, selectedIntervalLabel),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = textColor,
+        )
+        Slider(
+            value = beepIntervalSliderIndex(selectedIntervalSeconds).toFloat(),
+            onValueChange = { sliderValue ->
+                val optionIndex = sliderValue.roundToInt().coerceIn(
+                    0,
+                    BEEP_INTERVAL_OPTIONS_SECONDS.lastIndex,
+                )
+                onIntervalChange(BEEP_INTERVAL_OPTIONS_SECONDS[optionIndex])
+            },
+            valueRange = 0f..BEEP_INTERVAL_OPTIONS_SECONDS.lastIndex.toFloat(),
+            steps = BEEP_INTERVAL_OPTIONS_SECONDS.size - 2,
             enabled = enabled,
             modifier = Modifier.fillMaxWidth(),
         )
@@ -521,6 +592,14 @@ private fun durationSliderIndex(durationSeconds: Int): Int {
 private fun setCountSliderIndex(setCount: Int): Int {
     return SET_COUNT_OPTIONS.indexOf(normalizeSetCount(setCount))
         .coerceAtLeast(0)
+}
+
+private fun beepIntervalSliderIndex(intervalSeconds: Int): Int {
+    val normalizedInterval = intervalSeconds.coerceIn(
+        BEEP_INTERVAL_OPTIONS_SECONDS.first(),
+        BEEP_INTERVAL_OPTIONS_SECONDS.last(),
+    )
+    return BEEP_INTERVAL_OPTIONS_SECONDS.indexOf(normalizedInterval).coerceAtLeast(0)
 }
 
 private fun formatLoggedTimestamp(timestamp: Long?, deltaMillis: Long?): String {

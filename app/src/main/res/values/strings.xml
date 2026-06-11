@@ -11,6 +11,9 @@
     <string name="current_set_label">現在 %1$d / %2$d セット目</string>
     <string name="announcement_volume_label">発話音量</string>
     <string name="announcement_volume_value">%1$d%%</string>
+    <string name="fast_phase_beep_interval_label">早く歩くピッピ間隔</string>
+    <string name="slow_phase_beep_interval_label">ゆっくり歩くピッピ間隔</string>
+    <string name="beep_interval_value">%1$s</string>
     <string name="vibration_enabled_label">バイブ通知</string>
     <string name="setting_summary">%1$s: %2$s</string>
     <string name="setting_on">ON</string>
