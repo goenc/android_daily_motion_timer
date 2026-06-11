@@ -14,9 +14,9 @@ enum class BeepPitchPreset(
     val label: String,
     val frequencyHz: Double,
 ) {
-    Low(label = "少し低い", frequencyHz = 830.6),
-    Mid(label = "真ん中", frequencyHz = 880.0),
-    High(label = "少し高い", frequencyHz = 932.3);
+    Low(label = "低", frequencyHz = 784.0),
+    Mid(label = "中", frequencyHz = 880.0),
+    High(label = "高", frequencyHz = 987.8);
 }
 
 val PHASE_DURATION_OPTIONS_SECONDS = listOf(10, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330)

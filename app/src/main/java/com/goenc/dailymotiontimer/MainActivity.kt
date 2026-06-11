@@ -586,9 +586,9 @@ private fun BeepPitchSelector(
     onPitchChange: (BeepPitchPreset) -> Unit,
 ) {
     val pitchOptions = listOf(
+        BeepPitchPreset.Low,
         BeepPitchPreset.Mid,
         BeepPitchPreset.High,
-        BeepPitchPreset.Low,
     )
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(

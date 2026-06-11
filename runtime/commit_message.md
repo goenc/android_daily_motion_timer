@@ -1,1 +1,1 @@
-Add beep pitch presets and half-second intervals
+Adjust beep pitch labels and pitch range
