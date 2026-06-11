@@ -1,1 +1,1 @@
-Add separate beep volume settings
+Fix speech priority over queued beep playback
