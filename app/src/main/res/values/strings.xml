@@ -12,6 +12,8 @@
     <string name="announcement_volume_label">発話音量</string>
     <string name="beep_volume_label">ピッピ音量</string>
     <string name="announcement_volume_value">%1$d%%</string>
+    <string name="fast_phase_beep_pitch_label">早く歩くピッピ音の高さ</string>
+    <string name="slow_phase_beep_pitch_label">ゆっくり歩くピッピ音の高さ</string>
     <string name="fast_phase_beep_interval_label">早く歩くピッピ間隔</string>
     <string name="slow_phase_beep_interval_label">ゆっくり歩くピッピ間隔</string>
     <string name="beep_interval_value">%1$s</string>

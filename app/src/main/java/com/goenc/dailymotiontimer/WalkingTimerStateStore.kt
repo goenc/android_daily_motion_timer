@@ -13,6 +13,8 @@ internal object WalkingTimerStateStore {
     private const val KEY_SLOW_DURATION_MILLIS = "slow_duration_millis"
     private const val KEY_FAST_BEEP_INTERVAL_SECONDS = "fast_beep_interval_seconds"
     private const val KEY_SLOW_BEEP_INTERVAL_SECONDS = "slow_beep_interval_seconds"
+    private const val KEY_FAST_BEEP_PITCH = "fast_beep_pitch"
+    private const val KEY_SLOW_BEEP_PITCH = "slow_beep_pitch"
     private const val KEY_BEEP_VOLUME = "beep_volume"
     private const val KEY_SET_COUNT = "set_count"
     private const val KEY_START_DELAY_SECONDS = "start_delay_seconds"
@@ -57,13 +59,15 @@ internal object WalkingTimerStateStore {
                     durationMillisFromSeconds(DEFAULT_PHASE_DURATION_SECONDS),
                 ),
                 fastPhaseBeepIntervalSeconds = normalizeBeepIntervalSeconds(
-                    prefs.getInt(KEY_FAST_BEEP_INTERVAL_SECONDS, DEFAULT_FAST_BEEP_INTERVAL_SECONDS),
+                    prefs.readBeepInterval(KEY_FAST_BEEP_INTERVAL_SECONDS, DEFAULT_FAST_BEEP_INTERVAL_SECONDS),
                     DEFAULT_FAST_BEEP_INTERVAL_SECONDS,
                 ),
                 slowPhaseBeepIntervalSeconds = normalizeBeepIntervalSeconds(
-                    prefs.getInt(KEY_SLOW_BEEP_INTERVAL_SECONDS, DEFAULT_SLOW_BEEP_INTERVAL_SECONDS),
+                    prefs.readBeepInterval(KEY_SLOW_BEEP_INTERVAL_SECONDS, DEFAULT_SLOW_BEEP_INTERVAL_SECONDS),
                     DEFAULT_SLOW_BEEP_INTERVAL_SECONDS,
                 ),
+                fastPhaseBeepPitchPreset = prefs.readBeepPitch(KEY_FAST_BEEP_PITCH, BeepPitchPreset.Mid),
+                slowPhaseBeepPitchPreset = prefs.readBeepPitch(KEY_SLOW_BEEP_PITCH, BeepPitchPreset.Mid),
                 beepVolume = normalizeBeepVolume(
                     prefs.getFloat(KEY_BEEP_VOLUME, DEFAULT_BEEP_VOLUME),
                 ),
@@ -108,20 +112,22 @@ internal object WalkingTimerStateStore {
             )
             .putLong(KEY_FAST_DURATION_MILLIS, normalizePhaseDurationMillis(state.fastDurationMillis))
             .putLong(KEY_SLOW_DURATION_MILLIS, normalizePhaseDurationMillis(state.slowDurationMillis))
-            .putInt(
+            .putFloat(
                 KEY_FAST_BEEP_INTERVAL_SECONDS,
                 normalizeBeepIntervalSeconds(
                     state.fastPhaseBeepIntervalSeconds,
                     DEFAULT_FAST_BEEP_INTERVAL_SECONDS,
                 ),
             )
-            .putInt(
+            .putFloat(
                 KEY_SLOW_BEEP_INTERVAL_SECONDS,
                 normalizeBeepIntervalSeconds(
                     state.slowPhaseBeepIntervalSeconds,
                     DEFAULT_SLOW_BEEP_INTERVAL_SECONDS,
                 ),
             )
+            .putString(KEY_FAST_BEEP_PITCH, state.fastPhaseBeepPitchPreset.name)
+            .putString(KEY_SLOW_BEEP_PITCH, state.slowPhaseBeepPitchPreset.name)
             .putFloat(KEY_BEEP_VOLUME, normalizeBeepVolume(state.beepVolume))
             .putInt(KEY_SET_COUNT, normalizeSetCount(state.setCount))
             .putInt(KEY_START_DELAY_SECONDS, normalizeStartDelaySeconds(state.startDelaySeconds))
@@ -214,6 +220,8 @@ internal object WalkingTimerStateStore {
             slowDurationMillis = durationMillisFromSeconds(slowPhaseDurationSeconds),
             fastPhaseBeepIntervalSeconds = DEFAULT_FAST_BEEP_INTERVAL_SECONDS,
             slowPhaseBeepIntervalSeconds = DEFAULT_SLOW_BEEP_INTERVAL_SECONDS,
+            fastPhaseBeepPitchPreset = BeepPitchPreset.Mid,
+            slowPhaseBeepPitchPreset = BeepPitchPreset.Mid,
             beepVolume = DEFAULT_BEEP_VOLUME,
             setCount = DEFAULT_SET_COUNT,
             startDelaySeconds = DEFAULT_START_DELAY_SECONDS,
@@ -241,5 +249,27 @@ internal object WalkingTimerStateStore {
             return getLong(longKey, 0L)
         }
         return getInt(secondsKey, 0).toLong() * 1_000L
+    }
+
+    private fun android.content.SharedPreferences.readBeepPitch(
+        key: String,
+        defaultValue: BeepPitchPreset,
+    ): BeepPitchPreset {
+        val rawValue = getString(key, defaultValue.name) ?: return defaultValue
+        return runCatching { BeepPitchPreset.valueOf(rawValue) }.getOrDefault(defaultValue)
+    }
+
+    private fun android.content.SharedPreferences.readBeepInterval(
+        key: String,
+        defaultValue: Float,
+    ): Float {
+        if (!contains(key)) {
+            return defaultValue
+        }
+        return runCatching { getFloat(key, defaultValue) }
+            .getOrElse {
+                runCatching { getInt(key, defaultValue.toInt()).toFloat() }
+                    .getOrDefault(defaultValue)
+            }
     }
 }

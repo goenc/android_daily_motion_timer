@@ -29,6 +29,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderColors
@@ -80,6 +81,8 @@ class MainActivity : ComponentActivity() {
                             onAnnouncementVolumeChange = viewModel::updateAnnouncementVolume,
                             onBeepVolumeChange = viewModel::updateBeepVolume,
                             onVibrationEnabledChange = viewModel::updateVibrationEnabled,
+                            onFastPhaseBeepPitchChange = viewModel::updateFastPhaseBeepPitchPreset,
+                            onSlowPhaseBeepPitchChange = viewModel::updateSlowPhaseBeepPitchPreset,
                             onFastPhaseBeepIntervalChange = viewModel::updateFastPhaseBeepIntervalSeconds,
                             onSlowPhaseBeepIntervalChange = viewModel::updateSlowPhaseBeepIntervalSeconds,
                             onBackClick = { isSettingsScreenVisible = false },
@@ -309,8 +312,10 @@ private fun SettingsScreen(
     onAnnouncementVolumeChange: (Float) -> Unit,
     onBeepVolumeChange: (Float) -> Unit,
     onVibrationEnabledChange: (Boolean) -> Unit,
-    onFastPhaseBeepIntervalChange: (Int) -> Unit,
-    onSlowPhaseBeepIntervalChange: (Int) -> Unit,
+    onFastPhaseBeepPitchChange: (BeepPitchPreset) -> Unit,
+    onSlowPhaseBeepPitchChange: (BeepPitchPreset) -> Unit,
+    onFastPhaseBeepIntervalChange: (Float) -> Unit,
+    onSlowPhaseBeepIntervalChange: (Float) -> Unit,
     onBackClick: () -> Unit,
 ) {
     Column(
@@ -347,6 +352,24 @@ private fun SettingsScreen(
             title = stringResource(R.string.beep_volume_label),
             announcementVolume = uiState.beepVolume,
             onVolumeChange = onBeepVolumeChange,
+        )
+        Spacer(modifier = Modifier.height(20.dp))
+        BeepPitchSelector(
+            title = stringResource(R.string.fast_phase_beep_pitch_label),
+            selectedPitchLabel = uiState.formattedFastPhaseBeepPitch,
+            selectedPitchPreset = uiState.fastPhaseBeepPitchPreset,
+            enabled = !uiState.isActive,
+            textColor = Color.Unspecified,
+            onPitchChange = onFastPhaseBeepPitchChange,
+        )
+        Spacer(modifier = Modifier.height(20.dp))
+        BeepPitchSelector(
+            title = stringResource(R.string.slow_phase_beep_pitch_label),
+            selectedPitchLabel = uiState.formattedSlowPhaseBeepPitch,
+            selectedPitchPreset = uiState.slowPhaseBeepPitchPreset,
+            enabled = !uiState.isActive,
+            textColor = Color.Unspecified,
+            onPitchChange = onSlowPhaseBeepPitchChange,
         )
         Spacer(modifier = Modifier.height(20.dp))
         BeepIntervalSlider(
@@ -524,10 +547,10 @@ private fun PhaseDurationSlider(
 private fun BeepIntervalSlider(
     title: String,
     selectedIntervalLabel: String,
-    selectedIntervalSeconds: Int,
+    selectedIntervalSeconds: Float,
     enabled: Boolean,
     textColor: Color = Color.Unspecified,
-    onIntervalChange: (Int) -> Unit,
+    onIntervalChange: (Float) -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
@@ -550,6 +573,58 @@ private fun BeepIntervalSlider(
             enabled = enabled,
             modifier = Modifier.fillMaxWidth(),
         )
+    }
+}
+
+@Composable
+private fun BeepPitchSelector(
+    title: String,
+    selectedPitchLabel: String,
+    selectedPitchPreset: BeepPitchPreset,
+    enabled: Boolean,
+    textColor: Color = Color.Unspecified,
+    onPitchChange: (BeepPitchPreset) -> Unit,
+) {
+    val pitchOptions = listOf(
+        BeepPitchPreset.Mid,
+        BeepPitchPreset.High,
+        BeepPitchPreset.Low,
+    )
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = stringResource(R.string.setting_summary, title, selectedPitchLabel),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = textColor,
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            pitchOptions.forEach { option ->
+                val isSelected = option == selectedPitchPreset
+                val buttonModifier = Modifier.weight(1f)
+                if (isSelected) {
+                    Button(
+                        onClick = { onPitchChange(option) },
+                        enabled = enabled,
+                        modifier = buttonModifier,
+                    ) {
+                        Text(text = option.label)
+                    }
+                } else {
+                    OutlinedButton(
+                        onClick = { onPitchChange(option) },
+                        enabled = enabled,
+                        modifier = buttonModifier,
+                    ) {
+                        Text(text = option.label)
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -602,12 +677,14 @@ private fun setCountSliderIndex(setCount: Int): Int {
         .coerceAtLeast(0)
 }
 
-private fun beepIntervalSliderIndex(intervalSeconds: Int): Int {
-    val normalizedInterval = intervalSeconds.coerceIn(
-        BEEP_INTERVAL_OPTIONS_SECONDS.first(),
-        BEEP_INTERVAL_OPTIONS_SECONDS.last(),
+private fun beepIntervalSliderIndex(intervalSeconds: Float): Int {
+    val normalizedInterval = normalizeBeepIntervalSeconds(
+        intervalSeconds,
+        DEFAULT_FAST_BEEP_INTERVAL_SECONDS,
     )
-    return BEEP_INTERVAL_OPTIONS_SECONDS.indexOf(normalizedInterval).coerceAtLeast(0)
+    return BEEP_INTERVAL_OPTIONS_SECONDS.indexOfFirst { option ->
+        option == normalizedInterval
+    }.coerceAtLeast(0)
 }
 
 private fun formatLoggedTimestamp(timestamp: Long?, deltaMillis: Long?): String {

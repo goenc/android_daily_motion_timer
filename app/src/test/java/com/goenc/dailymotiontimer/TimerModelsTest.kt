@@ -12,8 +12,10 @@ class TimerModelsTest {
             pauseStartedElapsedRealtime = 0L,
             fastDurationMillis = 30_000L,
             slowDurationMillis = 90_000L,
-            fastPhaseBeepIntervalSeconds = 2,
-            slowPhaseBeepIntervalSeconds = 6,
+            fastPhaseBeepIntervalSeconds = 2.5f,
+            slowPhaseBeepIntervalSeconds = 6.5f,
+            fastPhaseBeepPitchPreset = BeepPitchPreset.Low,
+            slowPhaseBeepPitchPreset = BeepPitchPreset.High,
             setCount = 10,
             startDelaySeconds = 0,
             startPhase = WalkingPhase.Slow,
@@ -27,8 +29,10 @@ class TimerModelsTest {
         val restored = state.toUiState(nowElapsedRealtime = 16_000L)
 
         assertEquals(WalkingPhase.Slow, restored.currentPhase)
-        assertEquals(2, restored.fastPhaseBeepIntervalSeconds)
-        assertEquals(6, restored.slowPhaseBeepIntervalSeconds)
+        assertEquals(2.5f, restored.fastPhaseBeepIntervalSeconds, 0.0f)
+        assertEquals(6.5f, restored.slowPhaseBeepIntervalSeconds, 0.0f)
+        assertEquals(BeepPitchPreset.Low, restored.fastPhaseBeepPitchPreset)
+        assertEquals(BeepPitchPreset.High, restored.slowPhaseBeepPitchPreset)
         assertEquals(0.5f, restored.beepVolume, 0.0f)
         assertEquals(30, restored.fastPhaseDurationSeconds)
         assertEquals(90, restored.slowPhaseDurationSeconds)
@@ -38,16 +42,20 @@ class TimerModelsTest {
     @Test
     fun toPersistedStateNormalizesBeepIntervals() {
         val state = TimerUiState(
-            fastPhaseBeepIntervalSeconds = 0,
-            slowPhaseBeepIntervalSeconds = 99,
+            fastPhaseBeepIntervalSeconds = 0.1f,
+            slowPhaseBeepIntervalSeconds = 99.0f,
+            fastPhaseBeepPitchPreset = BeepPitchPreset.Low,
+            slowPhaseBeepPitchPreset = BeepPitchPreset.High,
             announcementVolume = 2.5f,
             beepVolume = 3.5f,
         )
 
         val persisted = state.toPersistedState()
 
-        assertEquals(DEFAULT_FAST_BEEP_INTERVAL_SECONDS, persisted.fastPhaseBeepIntervalSeconds)
-        assertEquals(DEFAULT_SLOW_BEEP_INTERVAL_SECONDS, persisted.slowPhaseBeepIntervalSeconds)
+        assertEquals(0.5f, persisted.fastPhaseBeepIntervalSeconds, 0.0f)
+        assertEquals(10.0f, persisted.slowPhaseBeepIntervalSeconds, 0.0f)
+        assertEquals(BeepPitchPreset.Low, persisted.fastPhaseBeepPitchPreset)
+        assertEquals(BeepPitchPreset.High, persisted.slowPhaseBeepPitchPreset)
         assertEquals(MAX_ANNOUNCEMENT_VOLUME, persisted.announcementVolume, 0.0f)
         assertEquals(MAX_BEEP_VOLUME, persisted.beepVolume, 0.0f)
     }

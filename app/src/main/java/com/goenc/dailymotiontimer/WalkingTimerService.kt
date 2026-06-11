@@ -25,6 +25,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.roundToLong
 
 class WalkingTimerService : Service() {
     private val stateLock = Any()
@@ -45,6 +46,8 @@ class WalkingTimerService : Service() {
     private var slowDurationMillis = durationMillisFromSeconds(DEFAULT_PHASE_DURATION_SECONDS)
     private var fastPhaseBeepIntervalSeconds = DEFAULT_FAST_BEEP_INTERVAL_SECONDS
     private var slowPhaseBeepIntervalSeconds = DEFAULT_SLOW_BEEP_INTERVAL_SECONDS
+    private var fastPhaseBeepPitchPreset = BeepPitchPreset.Mid
+    private var slowPhaseBeepPitchPreset = BeepPitchPreset.Mid
     private var setCount = DEFAULT_SET_COUNT
     private var startDelaySeconds = DEFAULT_START_DELAY_SECONDS
     private var startPhase = WalkingPhase.Fast
@@ -504,6 +507,8 @@ class WalkingTimerService : Service() {
             slowDurationMillis = persistedState.slowDurationMillis
             fastPhaseBeepIntervalSeconds = persistedState.fastPhaseBeepIntervalSeconds
             slowPhaseBeepIntervalSeconds = persistedState.slowPhaseBeepIntervalSeconds
+            fastPhaseBeepPitchPreset = persistedState.fastPhaseBeepPitchPreset
+            slowPhaseBeepPitchPreset = persistedState.slowPhaseBeepPitchPreset
             setCount = persistedState.setCount
             startDelaySeconds = persistedState.startDelaySeconds
             startPhase = persistedState.startPhase
@@ -527,6 +532,8 @@ class WalkingTimerService : Service() {
             slowDurationMillis = persistedState.slowDurationMillis
             fastPhaseBeepIntervalSeconds = persistedState.fastPhaseBeepIntervalSeconds
             slowPhaseBeepIntervalSeconds = persistedState.slowPhaseBeepIntervalSeconds
+            fastPhaseBeepPitchPreset = persistedState.fastPhaseBeepPitchPreset
+            slowPhaseBeepPitchPreset = persistedState.slowPhaseBeepPitchPreset
             setCount = persistedState.setCount
             startDelaySeconds = persistedState.startDelaySeconds
             announcementVolume = restoredAnnouncementVolume
@@ -548,6 +555,8 @@ class WalkingTimerService : Service() {
                 slowDurationMillis = slowDurationMillis,
                 fastPhaseBeepIntervalSeconds = fastPhaseBeepIntervalSeconds,
                 slowPhaseBeepIntervalSeconds = slowPhaseBeepIntervalSeconds,
+                fastPhaseBeepPitchPreset = fastPhaseBeepPitchPreset,
+                slowPhaseBeepPitchPreset = slowPhaseBeepPitchPreset,
                 setCount = setCount,
                 startDelaySeconds = startDelaySeconds,
                 startPhase = startPhase,
@@ -624,6 +633,8 @@ class WalkingTimerService : Service() {
             slowPhaseDurationSeconds = durationSecondsFromMillis(slowDurationMillis),
             fastPhaseBeepIntervalSeconds = fastPhaseBeepIntervalSeconds,
             slowPhaseBeepIntervalSeconds = slowPhaseBeepIntervalSeconds,
+            fastPhaseBeepPitchPreset = fastPhaseBeepPitchPreset,
+            slowPhaseBeepPitchPreset = slowPhaseBeepPitchPreset,
             setCount = setCount,
             startDelaySeconds = startDelaySeconds,
             announcementVolume = announcementVolume,
@@ -855,14 +866,14 @@ class WalkingTimerService : Service() {
 
         val phase = state.currentPhase
         val intervalSeconds = phaseBeepIntervalSeconds(phase)
-        val intervalMillis = intervalSeconds * 1_000L
+        val intervalMillis = (intervalSeconds * 1_000f).roundToLong()
         if (intervalMillis <= 0L) {
             return
         }
 
         val initialDelayMillis = nextPhaseBeepDelayMillis(
             phaseElapsedMillis = monitoredState.phaseElapsedMillis,
-            intervalMillis = intervalMillis,
+            intervalSeconds = intervalSeconds,
         )
         phaseBeepJob = serviceScope.launch {
             val phaseStartNumber = monitoredState.phaseStartNumber
@@ -881,7 +892,7 @@ class WalkingTimerService : Service() {
                     TAG,
                     "Dispatching ${phase.name} phase beep intervalSeconds=$intervalSeconds",
                 )
-                phaseAudioPlayer.playBeep()
+                phaseAudioPlayer.playBeep(phaseBeepPitchPreset(phase))
                 nextDelayMillis = intervalMillis
             }
         }
@@ -921,13 +932,20 @@ class WalkingTimerService : Service() {
         countdownRefreshJob = null
     }
 
-    private fun phaseBeepIntervalSeconds(phase: WalkingPhase): Int {
+    private fun phaseBeepIntervalSeconds(phase: WalkingPhase): Float {
         return synchronized(stateLock) {
             if (phase == WalkingPhase.Fast) fastPhaseBeepIntervalSeconds else slowPhaseBeepIntervalSeconds
         }
     }
 
-    private fun nextPhaseBeepDelayMillis(phaseElapsedMillis: Long, intervalMillis: Long): Long {
+    private fun phaseBeepPitchPreset(phase: WalkingPhase): BeepPitchPreset {
+        return synchronized(stateLock) {
+            if (phase == WalkingPhase.Fast) fastPhaseBeepPitchPreset else slowPhaseBeepPitchPreset
+        }
+    }
+
+    private fun nextPhaseBeepDelayMillis(phaseElapsedMillis: Long, intervalSeconds: Float): Long {
+        val intervalMillis = (intervalSeconds * 1_000f).roundToLong().coerceAtLeast(0L)
         if (intervalMillis <= 0L) {
             return 0L
         }

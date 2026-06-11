@@ -1,6 +1,7 @@
 package com.goenc.dailymotiontimer
 
 import java.util.Locale
+import kotlin.math.roundToInt
 
 enum class WalkingPhase(val label: String, val announcement: String) {
     Slow(label = "ゆっくり歩く", announcement = "ゆっくり歩いてください"),
@@ -9,13 +10,22 @@ enum class WalkingPhase(val label: String, val announcement: String) {
     fun next(): WalkingPhase = if (this == Slow) Fast else Slow
 }
 
+enum class BeepPitchPreset(
+    val label: String,
+    val frequencyHz: Double,
+) {
+    Low(label = "少し低い", frequencyHz = 830.6),
+    Mid(label = "真ん中", frequencyHz = 880.0),
+    High(label = "少し高い", frequencyHz = 932.3);
+}
+
 val PHASE_DURATION_OPTIONS_SECONDS = listOf(10, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330)
-val BEEP_INTERVAL_OPTIONS_SECONDS = listOf(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
+val BEEP_INTERVAL_OPTIONS_SECONDS = listOf(0.5f, 1.0f, 1.5f, 2.0f, 2.5f, 3.0f, 3.5f, 4.0f, 4.5f, 5.0f, 5.5f, 6.0f, 6.5f, 7.0f, 7.5f, 8.0f, 8.5f, 9.0f, 9.5f, 10.0f)
 val SET_COUNT_OPTIONS = listOf(5, 10, 15, 20)
 val START_DELAY_OPTIONS_SECONDS = listOf(0)
 const val DEFAULT_PHASE_DURATION_SECONDS = 180
-const val DEFAULT_FAST_BEEP_INTERVAL_SECONDS = 3
-const val DEFAULT_SLOW_BEEP_INTERVAL_SECONDS = 5
+const val DEFAULT_FAST_BEEP_INTERVAL_SECONDS = 3.0f
+const val DEFAULT_SLOW_BEEP_INTERVAL_SECONDS = 5.0f
 const val DEFAULT_SET_COUNT = 5
 const val DEFAULT_START_DELAY_SECONDS = 0
 const val DEFAULT_ANNOUNCEMENT_VOLUME = 1.0f
@@ -29,8 +39,10 @@ data class TimerUiState(
     val elapsedSeconds: Int = 0,
     val fastPhaseDurationSeconds: Int = DEFAULT_PHASE_DURATION_SECONDS,
     val slowPhaseDurationSeconds: Int = DEFAULT_PHASE_DURATION_SECONDS,
-    val fastPhaseBeepIntervalSeconds: Int = DEFAULT_FAST_BEEP_INTERVAL_SECONDS,
-    val slowPhaseBeepIntervalSeconds: Int = DEFAULT_SLOW_BEEP_INTERVAL_SECONDS,
+    val fastPhaseBeepIntervalSeconds: Float = DEFAULT_FAST_BEEP_INTERVAL_SECONDS,
+    val slowPhaseBeepIntervalSeconds: Float = DEFAULT_SLOW_BEEP_INTERVAL_SECONDS,
+    val fastPhaseBeepPitchPreset: BeepPitchPreset = BeepPitchPreset.Mid,
+    val slowPhaseBeepPitchPreset: BeepPitchPreset = BeepPitchPreset.Mid,
     val setCount: Int = DEFAULT_SET_COUNT,
     val startDelaySeconds: Int = DEFAULT_START_DELAY_SECONDS,
     val announcementVolume: Float = DEFAULT_ANNOUNCEMENT_VOLUME,
@@ -62,6 +74,12 @@ data class TimerUiState(
     val formattedSlowPhaseBeepInterval: String
         get() = formatBeepInterval(slowPhaseBeepIntervalSeconds)
 
+    val formattedFastPhaseBeepPitch: String
+        get() = formatBeepPitchPreset(fastPhaseBeepPitchPreset)
+
+    val formattedSlowPhaseBeepPitch: String
+        get() = formatBeepPitchPreset(slowPhaseBeepPitchPreset)
+
     val formattedSetCount: String
         get() = formatSetCount(setCount)
 
@@ -87,6 +105,8 @@ data class TimerUiState(
             normalizeBeepIntervalSeconds(fastPhaseBeepIntervalSeconds, DEFAULT_FAST_BEEP_INTERVAL_SECONDS)
         val normalizedSlowBeepIntervalSeconds =
             normalizeBeepIntervalSeconds(slowPhaseBeepIntervalSeconds, DEFAULT_SLOW_BEEP_INTERVAL_SECONDS)
+        val normalizedFastBeepPitchPreset = normalizeBeepPitchPreset(fastPhaseBeepPitchPreset)
+        val normalizedSlowBeepPitchPreset = normalizeBeepPitchPreset(slowPhaseBeepPitchPreset)
         val normalizedStartDelaySeconds = normalizeStartDelaySeconds(startDelaySeconds)
         val preStartRemainingSeconds =
             if (isRunning && sessionStartElapsedRealtime > nowElapsedRealtime) {
@@ -118,6 +138,8 @@ data class TimerUiState(
             slowPhaseDurationSeconds = normalizedSlowDurationSeconds,
             fastPhaseBeepIntervalSeconds = normalizedFastBeepIntervalSeconds,
             slowPhaseBeepIntervalSeconds = normalizedSlowBeepIntervalSeconds,
+            fastPhaseBeepPitchPreset = normalizedFastBeepPitchPreset,
+            slowPhaseBeepPitchPreset = normalizedSlowBeepPitchPreset,
             setCount = normalizeSetCount(setCount),
             startDelaySeconds = normalizedStartDelaySeconds,
             announcementVolume = normalizeAnnouncementVolume(announcementVolume),
@@ -133,8 +155,10 @@ data class PersistedTimerState(
     val pauseStartedElapsedRealtime: Long,
     val fastDurationMillis: Long,
     val slowDurationMillis: Long,
-    val fastPhaseBeepIntervalSeconds: Int,
-    val slowPhaseBeepIntervalSeconds: Int,
+    val fastPhaseBeepIntervalSeconds: Float,
+    val slowPhaseBeepIntervalSeconds: Float,
+    val fastPhaseBeepPitchPreset: BeepPitchPreset,
+    val slowPhaseBeepPitchPreset: BeepPitchPreset,
     val setCount: Int,
     val startDelaySeconds: Int,
     val startPhase: WalkingPhase,
@@ -151,6 +175,8 @@ data class PersistedTimerState(
             normalizeBeepIntervalSeconds(fastPhaseBeepIntervalSeconds, DEFAULT_FAST_BEEP_INTERVAL_SECONDS)
         val normalizedSlowBeepIntervalSeconds =
             normalizeBeepIntervalSeconds(slowPhaseBeepIntervalSeconds, DEFAULT_SLOW_BEEP_INTERVAL_SECONDS)
+        val normalizedFastBeepPitchPreset = normalizeBeepPitchPreset(fastPhaseBeepPitchPreset)
+        val normalizedSlowBeepPitchPreset = normalizeBeepPitchPreset(slowPhaseBeepPitchPreset)
         val normalizedAnnouncementVolume = normalizeAnnouncementVolume(announcementVolume)
         val normalizedBeepVolume = normalizeBeepVolume(beepVolume)
         val hasValidSession =
@@ -177,6 +203,8 @@ data class PersistedTimerState(
             slowDurationMillis = normalizedSlowDurationMillis,
             fastPhaseBeepIntervalSeconds = normalizedFastBeepIntervalSeconds,
             slowPhaseBeepIntervalSeconds = normalizedSlowBeepIntervalSeconds,
+            fastPhaseBeepPitchPreset = normalizedFastBeepPitchPreset,
+            slowPhaseBeepPitchPreset = normalizedSlowBeepPitchPreset,
             startDelaySeconds = normalizeStartDelaySeconds(startDelaySeconds),
             isRunning = sanitizedIsRunning,
             isPaused = sanitizedIsPaused,
@@ -198,6 +226,8 @@ data class PersistedTimerState(
                 sanitizedState.slowPhaseBeepIntervalSeconds,
                 DEFAULT_SLOW_BEEP_INTERVAL_SECONDS,
             ),
+            fastPhaseBeepPitchPreset = normalizeBeepPitchPreset(sanitizedState.fastPhaseBeepPitchPreset),
+            slowPhaseBeepPitchPreset = normalizeBeepPitchPreset(sanitizedState.slowPhaseBeepPitchPreset),
             setCount = normalizeSetCount(sanitizedState.setCount),
             startDelaySeconds = normalizeStartDelaySeconds(sanitizedState.startDelaySeconds),
             announcementVolume = sanitizedState.announcementVolume,
@@ -256,12 +286,16 @@ internal fun normalizeBeepVolume(volume: Float): Float {
     }
 }
 
-internal fun normalizeBeepIntervalSeconds(seconds: Int, defaultValue: Int): Int {
-    return if (seconds in BEEP_INTERVAL_OPTIONS_SECONDS) {
-        seconds
-    } else {
-        defaultValue
+internal fun normalizeBeepIntervalSeconds(seconds: Float, defaultValue: Float): Float {
+    if (seconds.isNaN() || seconds.isInfinite()) {
+        return defaultValue
     }
+    val normalized = ((seconds * 2.0f).roundToInt() / 2.0f)
+    return normalized.coerceIn(BEEP_INTERVAL_OPTIONS_SECONDS.first(), BEEP_INTERVAL_OPTIONS_SECONDS.last())
+}
+
+internal fun normalizeBeepPitchPreset(preset: BeepPitchPreset): BeepPitchPreset {
+    return if (BeepPitchPreset.entries.contains(preset)) preset else BeepPitchPreset.Mid
 }
 
 internal fun normalizeSetCount(setCount: Int): Int {
@@ -405,6 +439,8 @@ internal fun TimerUiState.toPersistedState(): PersistedTimerState {
             slowPhaseBeepIntervalSeconds,
             DEFAULT_SLOW_BEEP_INTERVAL_SECONDS,
         ),
+        fastPhaseBeepPitchPreset = normalizeBeepPitchPreset(fastPhaseBeepPitchPreset),
+        slowPhaseBeepPitchPreset = normalizeBeepPitchPreset(slowPhaseBeepPitchPreset),
         setCount = normalizeSetCount(setCount),
         startDelaySeconds = normalizeStartDelaySeconds(startDelaySeconds),
         startPhase = if (isActive) startPhase else WalkingPhase.Fast,
@@ -448,7 +484,21 @@ internal fun formatSetCount(setCount: Int): String {
 }
 
 internal fun formatBeepInterval(totalSeconds: Int): String {
-    return "${totalSeconds.coerceIn(BEEP_INTERVAL_OPTIONS_SECONDS.first(), BEEP_INTERVAL_OPTIONS_SECONDS.last())}秒ごと"
+    return "${formatBeepInterval(totalSeconds.toFloat())}"
+}
+
+internal fun formatBeepInterval(totalSeconds: Float): String {
+    val normalized = normalizeBeepIntervalSeconds(totalSeconds, DEFAULT_FAST_BEEP_INTERVAL_SECONDS)
+    val formatted = if (normalized % 1.0f == 0f) {
+        normalized.toInt().toString()
+    } else {
+        normalized.toString().trimEnd('0').trimEnd('.')
+    }
+    return "${formatted}秒ごと"
+}
+
+internal fun formatBeepPitchPreset(preset: BeepPitchPreset): String {
+    return preset.label
 }
 
 internal fun calculateCurrentSetNumber(

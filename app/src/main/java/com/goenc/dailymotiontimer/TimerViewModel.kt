@@ -31,12 +31,20 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         WalkingTimerController.updateSlowPhaseDurationSeconds(getApplication(), durationSeconds)
     }
 
-    fun updateFastPhaseBeepIntervalSeconds(intervalSeconds: Int) {
+    fun updateFastPhaseBeepIntervalSeconds(intervalSeconds: Float) {
         WalkingTimerController.updateFastPhaseBeepIntervalSeconds(getApplication(), intervalSeconds)
     }
 
-    fun updateSlowPhaseBeepIntervalSeconds(intervalSeconds: Int) {
+    fun updateSlowPhaseBeepIntervalSeconds(intervalSeconds: Float) {
         WalkingTimerController.updateSlowPhaseBeepIntervalSeconds(getApplication(), intervalSeconds)
+    }
+
+    fun updateFastPhaseBeepPitchPreset(preset: BeepPitchPreset) {
+        WalkingTimerController.updateFastPhaseBeepPitchPreset(getApplication(), preset)
+    }
+
+    fun updateSlowPhaseBeepPitchPreset(preset: BeepPitchPreset) {
+        WalkingTimerController.updateSlowPhaseBeepPitchPreset(getApplication(), preset)
     }
 
     fun updateSetCount(setCount: Int) {

@@ -74,7 +74,7 @@ object WalkingTimerController {
         )
     }
 
-    fun updateFastPhaseBeepIntervalSeconds(context: Context, intervalSeconds: Int) {
+    fun updateFastPhaseBeepIntervalSeconds(context: Context, intervalSeconds: Float) {
         updateIdlePhaseDurations(
             context = context,
             fastPhaseDurationSeconds = _uiState.value.fastPhaseDurationSeconds,
@@ -84,13 +84,37 @@ object WalkingTimerController {
         )
     }
 
-    fun updateSlowPhaseBeepIntervalSeconds(context: Context, intervalSeconds: Int) {
+    fun updateSlowPhaseBeepIntervalSeconds(context: Context, intervalSeconds: Float) {
         updateIdlePhaseDurations(
             context = context,
             fastPhaseDurationSeconds = _uiState.value.fastPhaseDurationSeconds,
             slowPhaseDurationSeconds = _uiState.value.slowPhaseDurationSeconds,
             fastPhaseBeepIntervalSeconds = _uiState.value.fastPhaseBeepIntervalSeconds,
             slowPhaseBeepIntervalSeconds = intervalSeconds,
+        )
+    }
+
+    fun updateFastPhaseBeepPitchPreset(context: Context, preset: BeepPitchPreset) {
+        updateIdlePhaseDurations(
+            context = context,
+            fastPhaseDurationSeconds = _uiState.value.fastPhaseDurationSeconds,
+            slowPhaseDurationSeconds = _uiState.value.slowPhaseDurationSeconds,
+            fastPhaseBeepIntervalSeconds = _uiState.value.fastPhaseBeepIntervalSeconds,
+            slowPhaseBeepIntervalSeconds = _uiState.value.slowPhaseBeepIntervalSeconds,
+            fastPhaseBeepPitchPreset = preset,
+            slowPhaseBeepPitchPreset = _uiState.value.slowPhaseBeepPitchPreset,
+        )
+    }
+
+    fun updateSlowPhaseBeepPitchPreset(context: Context, preset: BeepPitchPreset) {
+        updateIdlePhaseDurations(
+            context = context,
+            fastPhaseDurationSeconds = _uiState.value.fastPhaseDurationSeconds,
+            slowPhaseDurationSeconds = _uiState.value.slowPhaseDurationSeconds,
+            fastPhaseBeepIntervalSeconds = _uiState.value.fastPhaseBeepIntervalSeconds,
+            slowPhaseBeepIntervalSeconds = _uiState.value.slowPhaseBeepIntervalSeconds,
+            fastPhaseBeepPitchPreset = _uiState.value.fastPhaseBeepPitchPreset,
+            slowPhaseBeepPitchPreset = preset,
         )
     }
 
@@ -187,8 +211,10 @@ object WalkingTimerController {
         context: Context,
         fastPhaseDurationSeconds: Int,
         slowPhaseDurationSeconds: Int,
-        fastPhaseBeepIntervalSeconds: Int = _uiState.value.fastPhaseBeepIntervalSeconds,
-        slowPhaseBeepIntervalSeconds: Int = _uiState.value.slowPhaseBeepIntervalSeconds,
+        fastPhaseBeepIntervalSeconds: Float = _uiState.value.fastPhaseBeepIntervalSeconds,
+        slowPhaseBeepIntervalSeconds: Float = _uiState.value.slowPhaseBeepIntervalSeconds,
+        fastPhaseBeepPitchPreset: BeepPitchPreset = _uiState.value.fastPhaseBeepPitchPreset,
+        slowPhaseBeepPitchPreset: BeepPitchPreset = _uiState.value.slowPhaseBeepPitchPreset,
     ) {
         val currentState = _uiState.value
         if (currentState.isActive) {
@@ -209,6 +235,8 @@ object WalkingTimerController {
                 slowPhaseBeepIntervalSeconds,
                 DEFAULT_SLOW_BEEP_INTERVAL_SECONDS,
             ),
+            fastPhaseBeepPitchPreset = normalizeBeepPitchPreset(fastPhaseBeepPitchPreset),
+            slowPhaseBeepPitchPreset = normalizeBeepPitchPreset(slowPhaseBeepPitchPreset),
             setCount = currentState.setCount,
             startDelaySeconds = currentState.startDelaySeconds,
             announcementVolume = currentState.announcementVolume,

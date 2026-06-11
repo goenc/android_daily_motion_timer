@@ -25,7 +25,9 @@ internal class PhaseAudioPlayer(context: Context) {
     private val cueAudioData = AudioCue.values().associateWith { cue ->
         WavAudioData.load(appContext, cue.resId)
     }
-    private val beepAudioData = WavAudioData.generateBeep()
+    private val beepAudioData = BeepPitchPreset.entries.associateWith { preset ->
+        WavAudioData.generateBeep(frequencyHz = preset.frequencyHz)
+    }
 
     private var announcementVolume = DEFAULT_ANNOUNCEMENT_VOLUME
     private var beepVolume = DEFAULT_BEEP_VOLUME
@@ -56,18 +58,22 @@ internal class PhaseAudioPlayer(context: Context) {
         playSpeech(cue = cue, logEntryId = null)
     }
 
-    fun playBeep() {
+    fun playBeep(pitchPreset: BeepPitchPreset) {
         if (isReleased) {
             Log.w(TAG, "Ignoring Phase beep cue because audio player is released")
             return
         }
         audioHandler.post {
+            val audioData = checkNotNull(beepAudioData[pitchPreset]) {
+                "Missing audio data for beep pitch ${pitchPreset.name}"
+            }
             queueBeepPlayback(
                 PendingPlayback(
-                    audioData = beepAudioData,
-                    description = "Phase beep",
+                    audioData = audioData,
+                    description = "Phase beep ${pitchPreset.name}",
                     kind = PlaybackKind.BEEP,
                     volume = beepVolume,
+                    beepPitchPreset = pitchPreset,
                     logEntryId = null,
                 ),
             )
@@ -85,6 +91,7 @@ internal class PhaseAudioPlayer(context: Context) {
                 description = cue.description,
                 kind = PlaybackKind.SPEECH,
                 volume = announcementVolume,
+                beepPitchPreset = null,
                 logEntryId = logEntryId,
             )
             val playRequestedElapsedRealtime = SystemClock.elapsedRealtime()
@@ -301,6 +308,7 @@ internal class PhaseAudioPlayer(context: Context) {
         val description: String,
         val kind: PlaybackKind,
         val volume: Float,
+        val beepPitchPreset: BeepPitchPreset?,
         val logEntryId: Long?,
     )
 
