@@ -19,7 +19,9 @@ const val DEFAULT_SLOW_BEEP_INTERVAL_SECONDS = 5
 const val DEFAULT_SET_COUNT = 5
 const val DEFAULT_START_DELAY_SECONDS = 0
 const val DEFAULT_ANNOUNCEMENT_VOLUME = 1.0f
+const val DEFAULT_BEEP_VOLUME = 1.0f
 const val MAX_ANNOUNCEMENT_VOLUME = 2.0f
+const val MAX_BEEP_VOLUME = 2.0f
 
 data class TimerUiState(
     val currentPhase: WalkingPhase = WalkingPhase.Fast,
@@ -32,6 +34,7 @@ data class TimerUiState(
     val setCount: Int = DEFAULT_SET_COUNT,
     val startDelaySeconds: Int = DEFAULT_START_DELAY_SECONDS,
     val announcementVolume: Float = DEFAULT_ANNOUNCEMENT_VOLUME,
+    val beepVolume: Float = DEFAULT_BEEP_VOLUME,
     val isVibrationEnabled: Boolean = true,
     val isRunning: Boolean = false,
     val isPaused: Boolean = false,
@@ -118,6 +121,7 @@ data class TimerUiState(
             setCount = normalizeSetCount(setCount),
             startDelaySeconds = normalizedStartDelaySeconds,
             announcementVolume = normalizeAnnouncementVolume(announcementVolume),
+            beepVolume = normalizeBeepVolume(beepVolume),
             preStartRemainingSeconds = preStartRemainingSeconds,
         )
     }
@@ -137,6 +141,7 @@ data class PersistedTimerState(
     val isRunning: Boolean,
     val isPaused: Boolean,
     val announcementVolume: Float,
+    val beepVolume: Float,
     val isVibrationEnabled: Boolean,
 ) {
     fun sanitized(nowElapsedRealtime: Long): PersistedTimerState {
@@ -147,6 +152,7 @@ data class PersistedTimerState(
         val normalizedSlowBeepIntervalSeconds =
             normalizeBeepIntervalSeconds(slowPhaseBeepIntervalSeconds, DEFAULT_SLOW_BEEP_INTERVAL_SECONDS)
         val normalizedAnnouncementVolume = normalizeAnnouncementVolume(announcementVolume)
+        val normalizedBeepVolume = normalizeBeepVolume(beepVolume)
         val hasValidSession =
             sessionStartElapsedRealtime > 0L &&
                 (sessionStartElapsedRealtime <= nowElapsedRealtime || isRunning)
@@ -175,6 +181,7 @@ data class PersistedTimerState(
             isRunning = sanitizedIsRunning,
             isPaused = sanitizedIsPaused,
             announcementVolume = normalizedAnnouncementVolume,
+            beepVolume = normalizedBeepVolume,
         )
     }
 
@@ -194,6 +201,7 @@ data class PersistedTimerState(
             setCount = normalizeSetCount(sanitizedState.setCount),
             startDelaySeconds = normalizeStartDelaySeconds(sanitizedState.startDelaySeconds),
             announcementVolume = sanitizedState.announcementVolume,
+            beepVolume = sanitizedState.beepVolume,
             isVibrationEnabled = sanitizedState.isVibrationEnabled,
             isRunning = sanitizedState.isRunning,
             isPaused = sanitizedState.isPaused,
@@ -237,6 +245,14 @@ internal fun normalizeAnnouncementVolume(volume: Float): Float {
         DEFAULT_ANNOUNCEMENT_VOLUME
     } else {
         volume.coerceIn(0.0f, MAX_ANNOUNCEMENT_VOLUME)
+    }
+}
+
+internal fun normalizeBeepVolume(volume: Float): Float {
+    return if (volume.isNaN() || volume.isInfinite()) {
+        DEFAULT_BEEP_VOLUME
+    } else {
+        volume.coerceIn(0.0f, MAX_BEEP_VOLUME)
     }
 }
 
@@ -374,6 +390,7 @@ internal fun TimerUiState.toPersistedState(): PersistedTimerState {
     val normalizedFastDurationSeconds = normalizePhaseDurationSeconds(fastPhaseDurationSeconds)
     val normalizedSlowDurationSeconds = normalizePhaseDurationSeconds(slowPhaseDurationSeconds)
     val normalizedAnnouncementVolume = normalizeAnnouncementVolume(announcementVolume)
+    val normalizedBeepVolume = normalizeBeepVolume(beepVolume)
     return PersistedTimerState(
         sessionStartElapsedRealtime = if (isActive) sessionStartElapsedRealtime else 0L,
         accumulatedPauseMillis = if (isActive) accumulatedPauseMillis.coerceAtLeast(0L) else 0L,
@@ -394,6 +411,7 @@ internal fun TimerUiState.toPersistedState(): PersistedTimerState {
         isRunning = isRunning,
         isPaused = isPaused,
         announcementVolume = normalizedAnnouncementVolume,
+        beepVolume = normalizedBeepVolume,
         isVibrationEnabled = isVibrationEnabled,
     )
 }

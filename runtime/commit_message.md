@@ -1,1 +1,1 @@
-Add per-phase beep interval settings
+Add separate beep volume settings

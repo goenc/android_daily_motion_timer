@@ -13,6 +13,7 @@ internal object WalkingTimerStateStore {
     private const val KEY_SLOW_DURATION_MILLIS = "slow_duration_millis"
     private const val KEY_FAST_BEEP_INTERVAL_SECONDS = "fast_beep_interval_seconds"
     private const val KEY_SLOW_BEEP_INTERVAL_SECONDS = "slow_beep_interval_seconds"
+    private const val KEY_BEEP_VOLUME = "beep_volume"
     private const val KEY_SET_COUNT = "set_count"
     private const val KEY_START_DELAY_SECONDS = "start_delay_seconds"
     private const val KEY_START_PHASE = "start_phase"
@@ -62,6 +63,9 @@ internal object WalkingTimerStateStore {
                 slowPhaseBeepIntervalSeconds = normalizeBeepIntervalSeconds(
                     prefs.getInt(KEY_SLOW_BEEP_INTERVAL_SECONDS, DEFAULT_SLOW_BEEP_INTERVAL_SECONDS),
                     DEFAULT_SLOW_BEEP_INTERVAL_SECONDS,
+                ),
+                beepVolume = normalizeBeepVolume(
+                    prefs.getFloat(KEY_BEEP_VOLUME, DEFAULT_BEEP_VOLUME),
                 ),
                 setCount = normalizeSetCount(prefs.getInt(KEY_SET_COUNT, DEFAULT_SET_COUNT)),
                 startDelaySeconds = normalizeStartDelaySeconds(
@@ -118,6 +122,7 @@ internal object WalkingTimerStateStore {
                     DEFAULT_SLOW_BEEP_INTERVAL_SECONDS,
                 ),
             )
+            .putFloat(KEY_BEEP_VOLUME, normalizeBeepVolume(state.beepVolume))
             .putInt(KEY_SET_COUNT, normalizeSetCount(state.setCount))
             .putInt(KEY_START_DELAY_SECONDS, normalizeStartDelaySeconds(state.startDelaySeconds))
             .putString(KEY_START_PHASE, state.startPhase.name)
@@ -209,6 +214,7 @@ internal object WalkingTimerStateStore {
             slowDurationMillis = durationMillisFromSeconds(slowPhaseDurationSeconds),
             fastPhaseBeepIntervalSeconds = DEFAULT_FAST_BEEP_INTERVAL_SECONDS,
             slowPhaseBeepIntervalSeconds = DEFAULT_SLOW_BEEP_INTERVAL_SECONDS,
+            beepVolume = DEFAULT_BEEP_VOLUME,
             setCount = DEFAULT_SET_COUNT,
             startDelaySeconds = DEFAULT_START_DELAY_SECONDS,
             startPhase = WalkingPhase.Fast,

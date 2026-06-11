@@ -28,6 +28,7 @@ internal class PhaseAudioPlayer(context: Context) {
     private val beepAudioData = WavAudioData.generateBeep()
 
     private var announcementVolume = DEFAULT_ANNOUNCEMENT_VOLUME
+    private var beepVolume = DEFAULT_BEEP_VOLUME
     private var currentAudioTrack: AudioTrack? = null
     private var currentPlaybackId = 0
     private var pendingPlayback: PendingPlayback? = null
@@ -58,6 +59,7 @@ internal class PhaseAudioPlayer(context: Context) {
         playAudioData(
             audioData = beepAudioData,
             description = "Phase beep",
+            volume = beepVolume,
             logEntryId = null,
         )
     }
@@ -66,11 +68,17 @@ internal class PhaseAudioPlayer(context: Context) {
         playAudioData(
             audioData = checkNotNull(cueAudioData[cue]) { "Missing audio data for ${cue.description}" },
             description = cue.description,
+            volume = announcementVolume,
             logEntryId = logEntryId,
         )
     }
 
-    private fun playAudioData(audioData: WavAudioData, description: String, logEntryId: Long?) {
+    private fun playAudioData(
+        audioData: WavAudioData,
+        description: String,
+        volume: Float,
+        logEntryId: Long?,
+    ) {
         if (isReleased) {
             Log.w(TAG, "Ignoring $description cue because audio player is released")
             return
@@ -88,7 +96,12 @@ internal class PhaseAudioPlayer(context: Context) {
                 "Received $description cue playback request " +
                     "at=${playRequestedElapsedRealtime} logEntryId=${logEntryId ?: "none"}",
             )
-            pendingPlayback = PendingPlayback(audioData = audioData, description = description, logEntryId = logEntryId)
+            pendingPlayback = PendingPlayback(
+                audioData = audioData,
+                description = description,
+                volume = volume,
+                logEntryId = logEntryId,
+            )
             stopCurrentPlaybackLocked(reason = "replace with $description")
             startPendingPlayback()
         }
@@ -100,6 +113,15 @@ internal class PhaseAudioPlayer(context: Context) {
         }
         audioHandler.post {
             announcementVolume = normalizeAnnouncementVolume(volume)
+        }
+    }
+
+    fun setBeepVolume(volume: Float) {
+        if (isReleased) {
+            return
+        }
+        audioHandler.post {
+            beepVolume = normalizeBeepVolume(volume)
         }
     }
 
@@ -131,7 +153,7 @@ internal class PhaseAudioPlayer(context: Context) {
 
         val queuedPlayback = pendingPlayback ?: return
         val audioData = queuedPlayback.audioData
-        val playbackVolume = announcementVolume
+        val playbackVolume = queuedPlayback.volume
         val amplifiedPcm = audioData.scaledPcm16(playbackVolume)
         val audioTrack = AudioTrack.Builder()
             .setAudioAttributes(audioAttributes)
@@ -243,6 +265,7 @@ internal class PhaseAudioPlayer(context: Context) {
     private data class PendingPlayback(
         val audioData: WavAudioData,
         val description: String,
+        val volume: Float,
         val logEntryId: Long?,
     )
 

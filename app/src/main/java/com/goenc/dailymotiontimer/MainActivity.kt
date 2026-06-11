@@ -78,6 +78,7 @@ class MainActivity : ComponentActivity() {
                             uiState = displayState,
                             modifier = Modifier.padding(innerPadding),
                             onAnnouncementVolumeChange = viewModel::updateAnnouncementVolume,
+                            onBeepVolumeChange = viewModel::updateBeepVolume,
                             onVibrationEnabledChange = viewModel::updateVibrationEnabled,
                             onFastPhaseBeepIntervalChange = viewModel::updateFastPhaseBeepIntervalSeconds,
                             onSlowPhaseBeepIntervalChange = viewModel::updateSlowPhaseBeepIntervalSeconds,
@@ -306,6 +307,7 @@ private fun SettingsScreen(
     uiState: TimerUiState,
     modifier: Modifier = Modifier,
     onAnnouncementVolumeChange: (Float) -> Unit,
+    onBeepVolumeChange: (Float) -> Unit,
     onVibrationEnabledChange: (Boolean) -> Unit,
     onFastPhaseBeepIntervalChange: (Int) -> Unit,
     onSlowPhaseBeepIntervalChange: (Int) -> Unit,
@@ -339,6 +341,12 @@ private fun SettingsScreen(
             title = stringResource(R.string.announcement_volume_label),
             announcementVolume = uiState.announcementVolume,
             onVolumeChange = onAnnouncementVolumeChange,
+        )
+        Spacer(modifier = Modifier.height(20.dp))
+        AnnouncementVolumeSlider(
+            title = stringResource(R.string.beep_volume_label),
+            announcementVolume = uiState.beepVolume,
+            onVolumeChange = onBeepVolumeChange,
         )
         Spacer(modifier = Modifier.height(20.dp))
         BeepIntervalSlider(

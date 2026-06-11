@@ -49,6 +49,7 @@ class WalkingTimerService : Service() {
     private var startDelaySeconds = DEFAULT_START_DELAY_SECONDS
     private var startPhase = WalkingPhase.Fast
     private var announcementVolume = DEFAULT_ANNOUNCEMENT_VOLUME
+    private var beepVolume = DEFAULT_BEEP_VOLUME
     private var isVibrationEnabled = true
     private var isRunning = false
     private var isPaused = false
@@ -83,6 +84,7 @@ class WalkingTimerService : Service() {
             }
             ACTION_SET_APP_VISIBLE -> updateAppVisibility(intent)
             ACTION_UPDATE_ANNOUNCEMENT_VOLUME -> updateAnnouncementVolume(intent)
+            ACTION_UPDATE_BEEP_VOLUME -> updateBeepVolume(intent)
             ACTION_RESTORE, null -> restoreActiveSession()
             else -> currentUiState()
         }
@@ -508,9 +510,11 @@ class WalkingTimerService : Service() {
             isRunning = persistedState.isRunning
             isPaused = persistedState.isPaused
             announcementVolume = persistedState.announcementVolume
+            beepVolume = persistedState.beepVolume
             isVibrationEnabled = persistedState.isVibrationEnabled
         }
         phaseAudioPlayer.setAnnouncementVolume(persistedState.announcementVolume)
+        phaseAudioPlayer.setBeepVolume(persistedState.beepVolume)
 
         return persistedState.toUiState(nowElapsedRealtime)
     }
@@ -526,9 +530,11 @@ class WalkingTimerService : Service() {
             setCount = persistedState.setCount
             startDelaySeconds = persistedState.startDelaySeconds
             announcementVolume = restoredAnnouncementVolume
+            beepVolume = persistedState.beepVolume
             isVibrationEnabled = persistedState.isVibrationEnabled
         }
         phaseAudioPlayer.setAnnouncementVolume(restoredAnnouncementVolume)
+        phaseAudioPlayer.setBeepVolume(persistedState.beepVolume)
     }
 
     private fun persistState() {
@@ -548,6 +554,7 @@ class WalkingTimerService : Service() {
                 isRunning = isRunning,
                 isPaused = isPaused,
                 announcementVolume = announcementVolume,
+                beepVolume = beepVolume,
                 isVibrationEnabled = isVibrationEnabled,
             )
         }
@@ -620,6 +627,7 @@ class WalkingTimerService : Service() {
             setCount = setCount,
             startDelaySeconds = startDelaySeconds,
             announcementVolume = announcementVolume,
+            beepVolume = beepVolume,
             isVibrationEnabled = isVibrationEnabled,
             isRunning = isRunning,
             isPaused = isPaused,
@@ -980,6 +988,20 @@ class WalkingTimerService : Service() {
         return state
     }
 
+    private fun updateBeepVolume(intent: Intent?): TimerUiState {
+        val requestedVolume = intent?.getFloatExtra(EXTRA_BEEP_VOLUME, beepVolume)
+            ?: beepVolume
+        val normalizedVolume = normalizeBeepVolume(requestedVolume)
+        synchronized(stateLock) {
+            beepVolume = normalizedVolume
+        }
+        phaseAudioPlayer.setBeepVolume(normalizedVolume)
+
+        val state = currentUiState()
+        publishAndPersistState(state)
+        return state
+    }
+
     private fun updateAppVisibility(intent: Intent?): TimerUiState {
         isAppVisible = intent?.getBooleanExtra(EXTRA_APP_VISIBLE, true) ?: true
         val state = currentUiState()
@@ -1009,6 +1031,7 @@ class WalkingTimerService : Service() {
         const val ACTION_STOP = "com.goenc.dailymotiontimer.action.STOP"
         const val ACTION_RESTORE = "com.goenc.dailymotiontimer.action.RESTORE"
         const val ACTION_UPDATE_ANNOUNCEMENT_VOLUME = "com.goenc.dailymotiontimer.action.UPDATE_ANNOUNCEMENT_VOLUME"
+        const val ACTION_UPDATE_BEEP_VOLUME = "com.goenc.dailymotiontimer.action.UPDATE_BEEP_VOLUME"
         const val ACTION_SET_APP_VISIBLE = "com.goenc.dailymotiontimer.action.SET_APP_VISIBLE"
 
         private const val NOTIFICATION_CHANNEL_ID = "walking_timer"
@@ -1018,6 +1041,7 @@ class WalkingTimerService : Service() {
         private const val REQUEST_CODE_RESUME = 2
         private const val REQUEST_CODE_STOP = 3
         private const val EXTRA_ANNOUNCEMENT_VOLUME = "extra_announcement_volume"
+        private const val EXTRA_BEEP_VOLUME = "extra_beep_volume"
         private const val EXTRA_APP_VISIBLE = "extra_app_visible"
         private const val TAG = "WalkingTimerService"
         private const val UNINITIALIZED_PHASE_START_NUMBER = -1L
@@ -1033,6 +1057,12 @@ class WalkingTimerService : Service() {
         fun createAnnouncementVolumeIntent(context: Context, announcementVolume: Float): Intent {
             return createIntent(context, ACTION_UPDATE_ANNOUNCEMENT_VOLUME).apply {
                 putExtra(EXTRA_ANNOUNCEMENT_VOLUME, announcementVolume)
+            }
+        }
+
+        fun createBeepVolumeIntent(context: Context, beepVolume: Float): Intent {
+            return createIntent(context, ACTION_UPDATE_BEEP_VOLUME).apply {
+                putExtra(EXTRA_BEEP_VOLUME, beepVolume)
             }
         }
 

@@ -20,6 +20,7 @@ class TimerModelsTest {
             isRunning = true,
             isPaused = false,
             announcementVolume = 1.5f,
+            beepVolume = 0.5f,
             isVibrationEnabled = false,
         )
 
@@ -28,6 +29,7 @@ class TimerModelsTest {
         assertEquals(WalkingPhase.Slow, restored.currentPhase)
         assertEquals(2, restored.fastPhaseBeepIntervalSeconds)
         assertEquals(6, restored.slowPhaseBeepIntervalSeconds)
+        assertEquals(0.5f, restored.beepVolume, 0.0f)
         assertEquals(30, restored.fastPhaseDurationSeconds)
         assertEquals(90, restored.slowPhaseDurationSeconds)
         assertEquals(10, restored.setCount)
@@ -39,6 +41,7 @@ class TimerModelsTest {
             fastPhaseBeepIntervalSeconds = 0,
             slowPhaseBeepIntervalSeconds = 99,
             announcementVolume = 2.5f,
+            beepVolume = 3.5f,
         )
 
         val persisted = state.toPersistedState()
@@ -46,5 +49,6 @@ class TimerModelsTest {
         assertEquals(DEFAULT_FAST_BEEP_INTERVAL_SECONDS, persisted.fastPhaseBeepIntervalSeconds)
         assertEquals(DEFAULT_SLOW_BEEP_INTERVAL_SECONDS, persisted.slowPhaseBeepIntervalSeconds)
         assertEquals(MAX_ANNOUNCEMENT_VOLUME, persisted.announcementVolume, 0.0f)
+        assertEquals(MAX_BEEP_VOLUME, persisted.beepVolume, 0.0f)
     }
 }

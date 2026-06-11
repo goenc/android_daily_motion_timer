@@ -51,6 +51,10 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         WalkingTimerController.updateAnnouncementVolume(getApplication(), volume)
     }
 
+    fun updateBeepVolume(volume: Float) {
+        WalkingTimerController.updateBeepVolume(getApplication(), volume)
+    }
+
     fun setAppVisible(isVisible: Boolean) {
         WalkingTimerController.setAppVisible(getApplication(), isVisible)
     }

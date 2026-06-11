@@ -144,6 +144,28 @@ object WalkingTimerController {
         )
     }
 
+    fun updateBeepVolume(context: Context, volume: Float) {
+        val currentState = _uiState.value
+        val normalizedVolume = normalizeBeepVolume(volume)
+        val updatedState = currentState.copy(beepVolume = normalizedVolume)
+        publishState(updatedState)
+        WalkingTimerStateStore.save(
+            context.applicationContext,
+            updatedState.toPersistedState(),
+        )
+
+        if (!currentState.isActive) {
+            return
+        }
+
+        context.applicationContext.startService(
+            WalkingTimerService.createBeepVolumeIntent(
+                context = context.applicationContext,
+                beepVolume = normalizedVolume,
+            ),
+        )
+    }
+
     fun setAppVisible(context: Context, isVisible: Boolean) {
         if (!_uiState.value.isActive) {
             return
@@ -190,6 +212,7 @@ object WalkingTimerController {
             setCount = currentState.setCount,
             startDelaySeconds = currentState.startDelaySeconds,
             announcementVolume = currentState.announcementVolume,
+            beepVolume = currentState.beepVolume,
             isVibrationEnabled = currentState.isVibrationEnabled,
             isRunning = false,
             isPaused = false,
