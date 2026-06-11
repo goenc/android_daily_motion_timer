@@ -22,7 +22,7 @@ class TimerModelsTest {
             isRunning = true,
             isPaused = false,
             announcementVolume = 1.5f,
-            beepVolume = 0.5f,
+            beepVolume = 0.2f,
             isVibrationEnabled = false,
         )
 
@@ -33,7 +33,7 @@ class TimerModelsTest {
         assertEquals(6.5f, restored.slowPhaseBeepIntervalSeconds, 0.0f)
         assertEquals(BeepPitchPreset.Low, restored.fastPhaseBeepPitchPreset)
         assertEquals(BeepPitchPreset.High, restored.slowPhaseBeepPitchPreset)
-        assertEquals(0.5f, restored.beepVolume, 0.0f)
+        assertEquals(0.2f, restored.beepVolume, 0.0f)
         assertEquals(30, restored.fastPhaseDurationSeconds)
         assertEquals(90, restored.slowPhaseDurationSeconds)
         assertEquals(10, restored.setCount)
@@ -57,6 +57,6 @@ class TimerModelsTest {
         assertEquals(BeepPitchPreset.Low, persisted.fastPhaseBeepPitchPreset)
         assertEquals(BeepPitchPreset.High, persisted.slowPhaseBeepPitchPreset)
         assertEquals(MAX_ANNOUNCEMENT_VOLUME, persisted.announcementVolume, 0.0f)
-        assertEquals(MAX_BEEP_VOLUME, persisted.beepVolume, 0.0f)
+        assertEquals(0.4f, persisted.beepVolume, 0.0f)
     }
 }

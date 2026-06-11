@@ -29,9 +29,9 @@ const val DEFAULT_SLOW_BEEP_INTERVAL_SECONDS = 5.0f
 const val DEFAULT_SET_COUNT = 5
 const val DEFAULT_START_DELAY_SECONDS = 0
 const val DEFAULT_ANNOUNCEMENT_VOLUME = 1.0f
-const val DEFAULT_BEEP_VOLUME = 1.0f
+const val DEFAULT_BEEP_VOLUME = 0.4f
 const val MAX_ANNOUNCEMENT_VOLUME = 2.0f
-const val MAX_BEEP_VOLUME = 2.0f
+const val MAX_BEEP_VOLUME = 0.4f
 
 data class TimerUiState(
     val currentPhase: WalkingPhase = WalkingPhase.Fast,
@@ -284,6 +284,15 @@ internal fun normalizeBeepVolume(volume: Float): Float {
     } else {
         volume.coerceIn(0.0f, MAX_BEEP_VOLUME)
     }
+}
+
+internal fun beepVolumeToDisplayPercent(volume: Float): Int {
+    return ((normalizeBeepVolume(volume) / MAX_BEEP_VOLUME) * 100f).roundToInt().coerceIn(0, 100)
+}
+
+internal fun beepVolumeFromDisplayPercent(percent: Int): Float {
+    val clampedPercent = percent.coerceIn(0, 100)
+    return normalizeBeepVolume((clampedPercent / 100f) * MAX_BEEP_VOLUME)
 }
 
 internal fun normalizeBeepIntervalSeconds(seconds: Float, defaultValue: Float): Float {

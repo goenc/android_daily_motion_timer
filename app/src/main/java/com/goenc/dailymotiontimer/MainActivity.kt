@@ -200,7 +200,7 @@ private fun TimerScreen(
                 Icon(
                     painter = painterResource(id = R.drawable.ic_settings_24),
                     contentDescription = stringResource(R.string.settings_title),
-                    tint = activeTextColor,
+                    tint = Color.Black,
                 )
             }
         }
@@ -348,9 +348,9 @@ private fun SettingsScreen(
             onVolumeChange = onAnnouncementVolumeChange,
         )
         Spacer(modifier = Modifier.height(20.dp))
-        AnnouncementVolumeSlider(
+        BeepVolumeSlider(
             title = stringResource(R.string.beep_volume_label),
-            announcementVolume = uiState.beepVolume,
+            beepVolume = uiState.beepVolume,
             onVolumeChange = onBeepVolumeChange,
         )
         Spacer(modifier = Modifier.height(20.dp))
@@ -503,6 +503,38 @@ private fun AnnouncementVolumeSlider(
             },
             valueRange = 0f..200f,
             steps = 199,
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
+@Composable
+private fun BeepVolumeSlider(
+    title: String,
+    beepVolume: Float,
+    textColor: Color = Color.Unspecified,
+    onVolumeChange: (Float) -> Unit,
+) {
+    val volumePercent = beepVolumeToDisplayPercent(beepVolume)
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = stringResource(
+                R.string.setting_summary,
+                title,
+                stringResource(R.string.announcement_volume_value, volumePercent),
+            ),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = textColor,
+        )
+        Slider(
+            value = volumePercent.toFloat(),
+            onValueChange = { sliderValue ->
+                val clampedPercent = sliderValue.roundToInt().coerceIn(0, 100)
+                onVolumeChange(beepVolumeFromDisplayPercent(clampedPercent))
+            },
+            valueRange = 0f..100f,
+            steps = 99,
             modifier = Modifier.fillMaxWidth(),
         )
     }
