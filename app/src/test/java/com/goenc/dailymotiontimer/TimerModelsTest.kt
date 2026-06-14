@@ -78,11 +78,19 @@ class TimerModelsTest {
     @Test
     fun elapsedTimeDisplayParts_splitsHourPrefixAndMinutesSeconds() {
         assertEquals(
-            ElapsedTimeDisplayParts(hoursPrefix = null, minutesSeconds = "30分15秒"),
+            ElapsedTimeDisplayParts(
+                beforeAnchor = emptyList(),
+                anchor = ElapsedTimeDisplaySegment(value = "30", unit = "分"),
+                afterAnchor = listOf(ElapsedTimeDisplaySegment(value = "15", unit = "秒")),
+            ),
             elapsedTimeDisplayParts(1_815),
         )
         assertEquals(
-            ElapsedTimeDisplayParts(hoursPrefix = "1時間", minutesSeconds = "30分15秒"),
+            ElapsedTimeDisplayParts(
+                beforeAnchor = listOf(ElapsedTimeDisplaySegment(value = "1", unit = "時間")),
+                anchor = ElapsedTimeDisplaySegment(value = "30", unit = "分"),
+                afterAnchor = listOf(ElapsedTimeDisplaySegment(value = "15", unit = "秒")),
+            ),
             elapsedTimeDisplayParts(5_415),
         )
     }
