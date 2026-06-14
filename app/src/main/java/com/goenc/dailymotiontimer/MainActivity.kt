@@ -41,14 +41,17 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.graphics.Color
@@ -57,6 +60,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.goenc.dailymotiontimer.ui.theme.WorkoutFlowTimerTheme
 import kotlinx.coroutines.delay
+import kotlin.math.max
 import kotlin.math.roundToInt
 
 class MainActivity : ComponentActivity() {
@@ -145,6 +149,51 @@ private fun rememberDisplayState(uiState: TimerUiState): TimerUiState {
 }
 
 @Composable
+private fun CenteredElapsedTimeText(
+    elapsedSeconds: Int,
+    fontSize: androidx.compose.ui.unit.TextUnit,
+    fontWeight: FontWeight,
+    color: Color,
+    modifier: Modifier = Modifier,
+) {
+    val parts = remember(elapsedSeconds) { elapsedTimeDisplayParts(elapsedSeconds) }
+    val textStyle = TextStyle(
+        fontSize = fontSize,
+        fontWeight = fontWeight,
+        color = color,
+    )
+
+    Layout(
+        modifier = modifier.fillMaxWidth(),
+        content = {
+            if (parts.hoursPrefix != null) {
+                Text(text = parts.hoursPrefix, style = textStyle)
+            }
+            Text(text = parts.minutesSeconds, style = textStyle)
+        },
+    ) { measurables, constraints ->
+        val hasHours = parts.hoursPrefix != null
+        val hourPlaceable = if (hasHours) measurables[0].measure(constraints) else null
+        val minutesSecondsPlaceable = measurables[if (hasHours) 1 else 0].measure(constraints)
+        val height = max(hourPlaceable?.height ?: 0, minutesSecondsPlaceable.height)
+        val layoutWidth = constraints.maxWidth
+
+        layout(layoutWidth, height) {
+            val minutesSecondsX = (layoutWidth - minutesSecondsPlaceable.width) / 2
+            val hourX = minutesSecondsX - (hourPlaceable?.width ?: 0)
+            hourPlaceable?.placeRelative(
+                x = hourX,
+                y = (height - hourPlaceable.height) / 2,
+            )
+            minutesSecondsPlaceable.placeRelative(
+                x = minutesSecondsX,
+                y = (height - minutesSecondsPlaceable.height) / 2,
+            )
+        }
+    }
+}
+
+@Composable
 private fun TimerScreen(
     uiState: TimerUiState,
     modifier: Modifier = Modifier,
@@ -212,8 +261,8 @@ private fun TimerScreen(
             fontWeight = FontWeight.Bold,
             color = activeTextColor,
         )
-        Text(
-            text = uiState.formattedElapsedTime,
+        CenteredElapsedTimeText(
+            elapsedSeconds = uiState.elapsedSeconds,
             fontSize = 72.sp,
             fontWeight = FontWeight.Bold,
             color = activeTextColor,

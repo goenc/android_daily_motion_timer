@@ -471,11 +471,37 @@ internal fun formatRemainingDuration(totalSeconds: Int): String {
     return String.format(Locale.US, "%02d:%02d", minutes, seconds)
 }
 
+internal data class ElapsedTimeDisplayParts(
+    val hoursPrefix: String?,
+    val minutesSeconds: String,
+)
+
+internal fun elapsedTimeDisplayParts(totalSeconds: Int): ElapsedTimeDisplayParts {
+    val normalizedSeconds = totalSeconds.coerceAtLeast(0)
+    val hours = normalizedSeconds / 3_600
+    val minutes = (normalizedSeconds % 3_600) / 60
+    val seconds = normalizedSeconds % 60
+    return ElapsedTimeDisplayParts(
+        hoursPrefix = if (hours > 0) "${hours}時間" else null,
+        minutesSeconds = formatElapsedMinutesSeconds(minutes, seconds),
+    )
+}
+
 internal fun formatElapsedDuration(totalSeconds: Int): String {
-    val hours = totalSeconds / 3_600
-    val minutes = (totalSeconds % 3_600) / 60
-    val seconds = totalSeconds % 60
-    return String.format(Locale.US, "%02d:%02d:%02d", hours, minutes, seconds)
+    val parts = elapsedTimeDisplayParts(totalSeconds)
+    return buildString {
+        parts.hoursPrefix?.let(::append)
+        append(parts.minutesSeconds)
+    }
+}
+
+private fun formatElapsedMinutesSeconds(minutes: Int, seconds: Int): String {
+    return when {
+        minutes == 0 && seconds == 0 -> "0分"
+        minutes == 0 -> "${seconds}秒"
+        seconds == 0 -> "${minutes}分"
+        else -> "${minutes}分${seconds}秒"
+    }
 }
 
 internal fun formatPhaseDuration(totalSeconds: Int): String {

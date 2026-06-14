@@ -59,4 +59,31 @@ class TimerModelsTest {
         assertEquals(MAX_ANNOUNCEMENT_VOLUME, persisted.announcementVolume, 0.0f)
         assertEquals(0.4f, persisted.beepVolume, 0.0f)
     }
+
+    @Test
+    fun formatElapsedDuration_usesMinutesSecondsWithoutHourUnderOneHour() {
+        assertEquals("0分", formatElapsedDuration(0))
+        assertEquals("45秒", formatElapsedDuration(45))
+        assertEquals("12分", formatElapsedDuration(12 * 60))
+        assertEquals("59分59秒", formatElapsedDuration(3_599))
+    }
+
+    @Test
+    fun formatElapsedDuration_addsHourPrefixFromOneHour() {
+        assertEquals("1時間0分", formatElapsedDuration(3_600))
+        assertEquals("1時間5分30秒", formatElapsedDuration(3_930))
+        assertEquals("2時間3分", formatElapsedDuration(7_380))
+    }
+
+    @Test
+    fun elapsedTimeDisplayParts_splitsHourPrefixAndMinutesSeconds() {
+        assertEquals(
+            ElapsedTimeDisplayParts(hoursPrefix = null, minutesSeconds = "30分15秒"),
+            elapsedTimeDisplayParts(1_815),
+        )
+        assertEquals(
+            ElapsedTimeDisplayParts(hoursPrefix = "1時間", minutesSeconds = "30分15秒"),
+            elapsedTimeDisplayParts(5_415),
+        )
+    }
 }
