@@ -101,7 +101,6 @@ class MainActivity : ComponentActivity() {
                             onStopClick = viewModel::stop,
                             onFastPhaseDurationChange = viewModel::updateFastPhaseDurationSeconds,
                             onSlowPhaseDurationChange = viewModel::updateSlowPhaseDurationSeconds,
-                            onSetCountChange = viewModel::updateSetCount,
                             onOpenOverlaySettingsClick = ::openOverlaySettings,
                             onOpenSettingsClick = { isSettingsScreenVisible = true },
                         )
@@ -153,7 +152,6 @@ private fun TimerScreen(
     onStopClick: () -> Unit,
     onFastPhaseDurationChange: (Int) -> Unit,
     onSlowPhaseDurationChange: (Int) -> Unit,
-    onSetCountChange: (Int) -> Unit,
     onOpenOverlaySettingsClick: () -> Unit,
     onOpenSettingsClick: () -> Unit,
 ) {
@@ -183,19 +181,9 @@ private fun TimerScreen(
         Spacer(modifier = Modifier.height(24.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.End,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = stringResource(
-                    R.string.current_set_label,
-                    uiState.currentSetNumber,
-                    uiState.setCount,
-                ),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = activeTextColor,
-            )
             IconButton(onClick = onOpenSettingsClick) {
                 Icon(
                     painter = painterResource(id = R.drawable.ic_settings_24),
@@ -219,8 +207,15 @@ private fun TimerScreen(
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = stringResource(R.string.elapsed_time_label, uiState.formattedElapsedTime),
+            text = stringResource(R.string.elapsed_time_label),
             style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = activeTextColor,
+        )
+        Text(
+            text = uiState.formattedElapsedTime,
+            fontSize = 72.sp,
+            fontWeight = FontWeight.Bold,
             color = activeTextColor,
         )
         Spacer(modifier = Modifier.height(32.dp))
@@ -244,15 +239,6 @@ private fun TimerScreen(
             onDurationChange = onSlowPhaseDurationChange,
         )
         Spacer(modifier = Modifier.height(20.dp))
-        SetCountSlider(
-            title = stringResource(R.string.set_count_label),
-            selectedSetCountLabel = uiState.formattedSetCount,
-            selectedSetCount = uiState.setCount,
-            enabled = !uiState.isActive,
-            textColor = activeTextColor,
-            sliderColors = if (uiState.isRunning) runningSliderColors else SliderDefaults.colors(),
-            onSetCountChange = onSetCountChange,
-        )
         if (uiState.isActive && !Settings.canDrawOverlays(context)) {
             Spacer(modifier = Modifier.height(16.dp))
             Text(
@@ -417,41 +403,6 @@ private fun SettingsScreen(
                 enabled = !uiState.isActive,
             )
         }
-    }
-}
-
-@Composable
-private fun SetCountSlider(
-    title: String,
-    selectedSetCountLabel: String,
-    selectedSetCount: Int,
-    enabled: Boolean,
-    textColor: Color = Color.Unspecified,
-    sliderColors: SliderColors = SliderDefaults.colors(),
-    onSetCountChange: (Int) -> Unit,
-) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Text(
-            text = stringResource(R.string.setting_summary, title, selectedSetCountLabel),
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            color = textColor,
-        )
-        Slider(
-            value = setCountSliderIndex(selectedSetCount).toFloat(),
-            onValueChange = { sliderValue ->
-                val optionIndex = sliderValue.roundToInt().coerceIn(
-                    0,
-                    SET_COUNT_OPTIONS.lastIndex,
-                )
-                onSetCountChange(SET_COUNT_OPTIONS[optionIndex])
-            },
-            valueRange = 0f..SET_COUNT_OPTIONS.lastIndex.toFloat(),
-            steps = SET_COUNT_OPTIONS.size - 2,
-            enabled = enabled,
-            colors = sliderColors,
-            modifier = Modifier.fillMaxWidth(),
-        )
     }
 }
 
@@ -692,7 +643,6 @@ private fun TimerScreenPreview() {
             onStopClick = {},
             onFastPhaseDurationChange = {},
             onSlowPhaseDurationChange = {},
-            onSetCountChange = {},
             onOpenOverlaySettingsClick = {},
             onOpenSettingsClick = {},
         )
@@ -701,11 +651,6 @@ private fun TimerScreenPreview() {
 
 private fun durationSliderIndex(durationSeconds: Int): Int {
     return PHASE_DURATION_OPTIONS_SECONDS.indexOf(normalizePhaseDurationSeconds(durationSeconds))
-        .coerceAtLeast(0)
-}
-
-private fun setCountSliderIndex(setCount: Int): Int {
-    return SET_COUNT_OPTIONS.indexOf(normalizeSetCount(setCount))
         .coerceAtLeast(0)
 }
 

@@ -4,7 +4,7 @@
     <string name="pause">一時停止</string>
     <string name="resume">再開</string>
     <string name="stop">停止</string>
-    <string name="elapsed_time_label">累計経過時間 %1$s</string>
+    <string name="elapsed_time_label">経過時間</string>
     <string name="fast_phase_duration_label">早く歩く時間</string>
     <string name="slow_phase_duration_label">ゆっくり歩く時間</string>
     <string name="set_count_label">セット数</string>
