@@ -468,7 +468,7 @@ internal fun elapsedSecondsFromMillis(elapsedMillis: Long): Int {
 internal fun formatRemainingDuration(totalSeconds: Int): String {
     val minutes = totalSeconds / 60
     val seconds = totalSeconds % 60
-    return String.format(Locale.US, "%02d:%02d", minutes, seconds)
+    return String.format(Locale.US, "%d:%02d", minutes, seconds)
 }
 
 internal fun formatElapsedDuration(totalSeconds: Int): String {

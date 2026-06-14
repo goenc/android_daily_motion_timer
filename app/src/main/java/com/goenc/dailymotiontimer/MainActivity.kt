@@ -221,7 +221,10 @@ private fun TimerScreen(
             text = uiState.formattedRemainingTime,
             fontSize = 56.sp,
             fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(top = 16.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 16.dp),
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             color = activeTextColor,
         )
         Spacer(modifier = Modifier.height(8.dp))

@@ -74,4 +74,11 @@ class TimerModelsTest {
         assertEquals("1:05:30", formatElapsedDuration(3_930))
         assertEquals("2:03:00", formatElapsedDuration(7_380))
     }
+
+    @Test
+    fun formatRemainingDuration_omitsLeadingZeroOnMinutes() {
+        assertEquals("3:00", formatRemainingDuration(180))
+        assertEquals("5:30", formatRemainingDuration(330))
+        assertEquals("0:10", formatRemainingDuration(10))
+    }
 }
