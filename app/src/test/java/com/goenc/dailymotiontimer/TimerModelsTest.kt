@@ -61,37 +61,17 @@ class TimerModelsTest {
     }
 
     @Test
-    fun formatElapsedDuration_usesMinutesSecondsWithoutHourUnderOneHour() {
-        assertEquals("0分", formatElapsedDuration(0))
-        assertEquals("45秒", formatElapsedDuration(45))
-        assertEquals("12分", formatElapsedDuration(12 * 60))
-        assertEquals("59分59秒", formatElapsedDuration(3_599))
+    fun formatElapsedDuration_usesStopwatchStyleWithoutHourUnderOneHour() {
+        assertEquals("0:00", formatElapsedDuration(0))
+        assertEquals("0:45", formatElapsedDuration(45))
+        assertEquals("12:00", formatElapsedDuration(12 * 60))
+        assertEquals("59:59", formatElapsedDuration(3_599))
     }
 
     @Test
-    fun formatElapsedDuration_addsHourPrefixFromOneHour() {
-        assertEquals("1時間0分", formatElapsedDuration(3_600))
-        assertEquals("1時間5分30秒", formatElapsedDuration(3_930))
-        assertEquals("2時間3分", formatElapsedDuration(7_380))
-    }
-
-    @Test
-    fun elapsedTimeDisplayParts_splitsHourPrefixAndMinutesSeconds() {
-        assertEquals(
-            ElapsedTimeDisplayParts(
-                beforeAnchor = emptyList(),
-                anchor = ElapsedTimeDisplaySegment(value = "30", unit = "分"),
-                afterAnchor = listOf(ElapsedTimeDisplaySegment(value = "15", unit = "秒")),
-            ),
-            elapsedTimeDisplayParts(1_815),
-        )
-        assertEquals(
-            ElapsedTimeDisplayParts(
-                beforeAnchor = listOf(ElapsedTimeDisplaySegment(value = "1", unit = "時間")),
-                anchor = ElapsedTimeDisplaySegment(value = "30", unit = "分"),
-                afterAnchor = listOf(ElapsedTimeDisplaySegment(value = "15", unit = "秒")),
-            ),
-            elapsedTimeDisplayParts(5_415),
-        )
+    fun formatElapsedDuration_addsHourFromOneHour() {
+        assertEquals("1:00:00", formatElapsedDuration(3_600))
+        assertEquals("1:05:30", formatElapsedDuration(3_930))
+        assertEquals("2:03:00", formatElapsedDuration(7_380))
     }
 }

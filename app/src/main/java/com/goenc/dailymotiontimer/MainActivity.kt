@@ -47,21 +47,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.goenc.dailymotiontimer.ui.theme.WorkoutFlowTimerTheme
 import kotlinx.coroutines.delay
-import kotlin.math.max
 import kotlin.math.roundToInt
 
 class MainActivity : ComponentActivity() {
@@ -152,113 +148,20 @@ private fun rememberDisplayState(uiState: TimerUiState): TimerUiState {
 @Composable
 private fun CenteredElapsedTimeText(
     elapsedSeconds: Int,
-    fontSize: TextUnit,
     fontWeight: FontWeight,
     color: Color,
     modifier: Modifier = Modifier,
 ) {
-    val parts = remember(elapsedSeconds) { elapsedTimeDisplayParts(elapsedSeconds) }
-    val unitFontSize = (fontSize.value * ELAPSED_TIME_UNIT_FONT_SCALE).sp
-    val numberStyle = TextStyle(
-        fontSize = fontSize,
+    val elapsedTimeText = remember(elapsedSeconds) { formatElapsedDuration(elapsedSeconds) }
+    Text(
+        text = elapsedTimeText,
+        fontSize = 64.sp,
         fontWeight = fontWeight,
         color = color,
-    )
-    val unitStyle = TextStyle(
-        fontSize = unitFontSize,
-        fontWeight = FontWeight.Normal,
-        color = color,
-    )
-
-    Layout(
         modifier = modifier.fillMaxWidth(),
-        content = {
-            parts.beforeAnchor.forEach { segment ->
-                ElapsedTimeSegmentText(
-                    segment = segment,
-                    numberStyle = numberStyle,
-                    unitStyle = unitStyle,
-                )
-            }
-            Text(text = parts.anchor.value, style = numberStyle)
-            Text(text = parts.anchor.unit, style = unitStyle)
-            parts.afterAnchor.forEach { segment ->
-                ElapsedTimeSegmentText(
-                    segment = segment,
-                    numberStyle = numberStyle,
-                    unitStyle = unitStyle,
-                )
-            }
-        },
-    ) { measurables, constraints ->
-        var measurableIndex = 0
-        val beforePlaceables = parts.beforeAnchor.map {
-            measurables[measurableIndex++].measure(constraints)
-        }
-        val anchorValuePlaceable = measurables[measurableIndex++].measure(constraints)
-        val anchorUnitPlaceable = measurables[measurableIndex++].measure(constraints)
-        val afterPlaceables = parts.afterAnchor.map {
-            measurables[measurableIndex++].measure(constraints)
-        }
-
-        val layoutWidth = constraints.maxWidth
-        val anchorValueX = (layoutWidth - anchorValuePlaceable.width) / 2
-        val height = listOfNotNull(
-            beforePlaceables.maxOfOrNull { it.height },
-            anchorValuePlaceable.height,
-            anchorUnitPlaceable.height,
-            afterPlaceables.maxOfOrNull { it.height },
-        ).maxOrNull() ?: 0
-
-        layout(layoutWidth, height) {
-            var x = anchorValueX
-            beforePlaceables.reversed().forEach { placeable ->
-                x -= placeable.width
-                placeable.placeRelative(
-                    x = x,
-                    y = (height - placeable.height) / 2,
-                )
-            }
-
-            val anchorBottom = max(anchorValuePlaceable.height, anchorUnitPlaceable.height)
-            anchorValuePlaceable.placeRelative(
-                x = anchorValueX,
-                y = anchorBottom - anchorValuePlaceable.height,
-            )
-            anchorUnitPlaceable.placeRelative(
-                x = anchorValueX + anchorValuePlaceable.width,
-                y = anchorBottom - anchorUnitPlaceable.height,
-            )
-
-            x = anchorValueX + anchorValuePlaceable.width + anchorUnitPlaceable.width
-            afterPlaceables.forEach { placeable ->
-                placeable.placeRelative(
-                    x = x,
-                    y = (height - placeable.height) / 2,
-                )
-                x += placeable.width
-            }
-        }
-    }
+        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+    )
 }
-
-@Composable
-private fun ElapsedTimeSegmentText(
-    segment: ElapsedTimeDisplaySegment,
-    numberStyle: TextStyle,
-    unitStyle: TextStyle,
-) {
-    Row(verticalAlignment = Alignment.Bottom) {
-        Text(text = segment.value, style = numberStyle)
-        Text(
-            text = segment.unit,
-            style = unitStyle,
-            modifier = Modifier.padding(bottom = 2.dp),
-        )
-    }
-}
-
-private const val ELAPSED_TIME_UNIT_FONT_SCALE = 0.5f
 
 @Composable
 private fun TimerScreen(
@@ -330,7 +233,6 @@ private fun TimerScreen(
         )
         CenteredElapsedTimeText(
             elapsedSeconds = uiState.elapsedSeconds,
-            fontSize = 72.sp,
             fontWeight = FontWeight.Bold,
             color = activeTextColor,
         )

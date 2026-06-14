@@ -471,64 +471,15 @@ internal fun formatRemainingDuration(totalSeconds: Int): String {
     return String.format(Locale.US, "%02d:%02d", minutes, seconds)
 }
 
-internal data class ElapsedTimeDisplaySegment(
-    val value: String,
-    val unit: String,
-)
-
-internal data class ElapsedTimeDisplayParts(
-    val beforeAnchor: List<ElapsedTimeDisplaySegment> = emptyList(),
-    val anchor: ElapsedTimeDisplaySegment,
-    val afterAnchor: List<ElapsedTimeDisplaySegment> = emptyList(),
-)
-
-internal fun elapsedTimeDisplayParts(totalSeconds: Int): ElapsedTimeDisplayParts {
+internal fun formatElapsedDuration(totalSeconds: Int): String {
     val normalizedSeconds = totalSeconds.coerceAtLeast(0)
     val hours = normalizedSeconds / 3_600
     val minutes = (normalizedSeconds % 3_600) / 60
     val seconds = normalizedSeconds % 60
-    val beforeAnchor = if (hours > 0) {
-        listOf(ElapsedTimeDisplaySegment(value = hours.toString(), unit = "時間"))
+    return if (hours > 0) {
+        String.format(Locale.US, "%d:%02d:%02d", hours, minutes, seconds)
     } else {
-        emptyList()
-    }
-
-    return when {
-        minutes == 0 && seconds == 0 -> ElapsedTimeDisplayParts(
-            beforeAnchor = beforeAnchor,
-            anchor = ElapsedTimeDisplaySegment(value = "0", unit = "分"),
-        )
-        minutes == 0 -> ElapsedTimeDisplayParts(
-            beforeAnchor = beforeAnchor,
-            anchor = ElapsedTimeDisplaySegment(value = seconds.toString(), unit = "秒"),
-        )
-        seconds == 0 -> ElapsedTimeDisplayParts(
-            beforeAnchor = beforeAnchor,
-            anchor = ElapsedTimeDisplaySegment(value = minutes.toString(), unit = "分"),
-        )
-        else -> ElapsedTimeDisplayParts(
-            beforeAnchor = beforeAnchor,
-            anchor = ElapsedTimeDisplaySegment(value = minutes.toString(), unit = "分"),
-            afterAnchor = listOf(
-                ElapsedTimeDisplaySegment(value = seconds.toString(), unit = "秒"),
-            ),
-        )
-    }
-}
-
-internal fun formatElapsedDuration(totalSeconds: Int): String {
-    val parts = elapsedTimeDisplayParts(totalSeconds)
-    return buildString {
-        parts.beforeAnchor.forEach { segment ->
-            append(segment.value)
-            append(segment.unit)
-        }
-        append(parts.anchor.value)
-        append(parts.anchor.unit)
-        parts.afterAnchor.forEach { segment ->
-            append(segment.value)
-            append(segment.unit)
-        }
+        String.format(Locale.US, "%d:%02d", minutes, seconds)
     }
 }
 
