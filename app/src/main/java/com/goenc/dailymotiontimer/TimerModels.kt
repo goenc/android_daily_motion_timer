@@ -465,10 +465,24 @@ internal fun elapsedSecondsFromMillis(elapsedMillis: Long): Int {
     return (elapsedMillis / 1_000L).toInt()
 }
 
+internal data class RemainingTimeDisplayParts(
+    val minutes: String,
+    val seconds: String,
+)
+
+internal fun remainingTimeDisplayParts(totalSeconds: Int): RemainingTimeDisplayParts {
+    val normalizedSeconds = totalSeconds.coerceAtLeast(0)
+    val minutes = normalizedSeconds / 60
+    val seconds = normalizedSeconds % 60
+    return RemainingTimeDisplayParts(
+        minutes = minutes.toString(),
+        seconds = String.format(Locale.US, "%02d", seconds),
+    )
+}
+
 internal fun formatRemainingDuration(totalSeconds: Int): String {
-    val minutes = totalSeconds / 60
-    val seconds = totalSeconds % 60
-    return String.format(Locale.US, "%02d:%02d", minutes, seconds)
+    val parts = remainingTimeDisplayParts(totalSeconds)
+    return "${parts.minutes}:${parts.seconds}"
 }
 
 internal fun formatElapsedDuration(totalSeconds: Int): String {

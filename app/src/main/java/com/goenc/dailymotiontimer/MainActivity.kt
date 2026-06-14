@@ -47,17 +47,21 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.goenc.dailymotiontimer.ui.theme.WorkoutFlowTimerTheme
 import kotlinx.coroutines.delay
+import kotlin.math.max
 import kotlin.math.roundToInt
 
 class MainActivity : ComponentActivity() {
@@ -146,6 +150,58 @@ private fun rememberDisplayState(uiState: TimerUiState): TimerUiState {
 }
 
 @Composable
+private fun CenteredRemainingTimeText(
+    remainingSeconds: Int,
+    fontSize: TextUnit,
+    fontWeight: FontWeight,
+    color: Color,
+    modifier: Modifier = Modifier,
+) {
+    val parts = remember(remainingSeconds) { remainingTimeDisplayParts(remainingSeconds) }
+    val textStyle = TextStyle(
+        fontSize = fontSize,
+        fontWeight = fontWeight,
+        color = color,
+    )
+
+    Layout(
+        modifier = modifier.fillMaxWidth(),
+        content = {
+            Text(text = parts.minutes, style = textStyle)
+            Text(text = ":", style = textStyle)
+            Text(text = parts.seconds, style = textStyle)
+        },
+    ) { measurables, constraints ->
+        val minutesPlaceable = measurables[0].measure(constraints)
+        val colonPlaceable = measurables[1].measure(constraints)
+        val secondsPlaceable = measurables[2].measure(constraints)
+        val layoutWidth = constraints.maxWidth
+        val height = max(
+            minutesPlaceable.height,
+            max(colonPlaceable.height, secondsPlaceable.height),
+        )
+        val minutesX = (layoutWidth - minutesPlaceable.width) / 2
+
+        layout(layoutWidth, height) {
+            minutesPlaceable.placeRelative(
+                x = minutesX,
+                y = (height - minutesPlaceable.height) / 2,
+            )
+            var x = minutesX + minutesPlaceable.width
+            colonPlaceable.placeRelative(
+                x = x,
+                y = (height - colonPlaceable.height) / 2,
+            )
+            x += colonPlaceable.width
+            secondsPlaceable.placeRelative(
+                x = x,
+                y = (height - secondsPlaceable.height) / 2,
+            )
+        }
+    }
+}
+
+@Composable
 private fun CenteredElapsedTimeText(
     elapsedSeconds: Int,
     fontWeight: FontWeight,
@@ -217,8 +273,8 @@ private fun TimerScreen(
             fontWeight = FontWeight.Bold,
             color = activeTextColor,
         )
-        Text(
-            text = uiState.formattedRemainingTime,
+        CenteredRemainingTimeText(
+            remainingSeconds = uiState.remainingSeconds,
             fontSize = 56.sp,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(top = 16.dp),
