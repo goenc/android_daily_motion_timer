@@ -15,7 +15,7 @@ enum class BeepPitchPreset(
     val frequencyHz: Double,
 ) {
     Low(label = "低", frequencyHz = 784.0),
-    Mid(label = "中", frequencyHz = 880.0),
+    Mid(label = "中", frequencyHz = 1250.0),
     High(label = "高", frequencyHz = 1800.0);
 }
 
