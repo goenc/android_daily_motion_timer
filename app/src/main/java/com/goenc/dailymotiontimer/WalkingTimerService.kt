@@ -156,12 +156,14 @@ class WalkingTimerService : Service() {
         showNotification(state, promoteToForeground = true)
         publishAndPersistState(state)
         if (isNewSession && !state.isPreparingStart) {
-            enqueuePhaseStartAnnouncement(state.currentPhase, source = "new session")
+            enqueuePhaseStartAnnouncement(
+                phase = state.currentPhase,
+                source = "new session",
+                monitoredState = monitoredState,
+            )
+        } else {
+            schedulePhaseBeepPlayback(monitoredState)
         }
-        syncPhaseStartTracking(monitoredState.phaseStartNumber, markAsAnnounced = true)
-        scheduleNextPhaseTransition(nowElapsedRealtime)
-        schedulePhaseElapsedMilestones(monitoredState)
-        schedulePhaseBeepPlayback(monitoredState)
         scheduleCountdownRefresh()
         return state
     }
@@ -297,9 +299,9 @@ class WalkingTimerService : Service() {
                 phase = state.currentPhase,
                 source = "phase transition",
                 logEntryId = logEntryId,
+                monitoredState = monitoredState,
             )
             schedulePhaseElapsedMilestones(monitoredState)
-            schedulePhaseBeepPlayback(monitoredState)
         }
         return monitoredState
     }
@@ -318,10 +320,24 @@ class WalkingTimerService : Service() {
         updatePhaseOverlay(state)
     }
 
-    private fun announcePhaseTransition(phase: WalkingPhase, logEntryId: Long? = null) {
+    private fun announcePhaseTransition(
+        phase: WalkingPhase,
+        logEntryId: Long? = null,
+        onSpeechCompleted: (() -> Unit)? = null,
+    ) {
         val currentAnnouncementVolume = synchronized(stateLock) { announcementVolume }
         phaseAudioPlayer.setAnnouncementVolume(currentAnnouncementVolume)
-        phaseAudioPlayer.play(phase, logEntryId = logEntryId)
+        val speechRequestedAt = SystemClock.elapsedRealtime()
+        Log.i(
+            TAG,
+            "Phase start speech requested at=$speechRequestedAt phase=${phase.name} " +
+                "logEntryId=${logEntryId ?: "none"}",
+        )
+        phaseAudioPlayer.play(
+            phase = phase,
+            logEntryId = logEntryId,
+            onCompleted = onSpeechCompleted,
+        )
         if (!isVibrationEnabled()) {
             return
         }
@@ -764,23 +780,73 @@ class WalkingTimerService : Service() {
     private fun enqueuePhaseStartAnnouncement(
         phase: WalkingPhase,
         source: String,
+        monitoredState: PhaseMonitorState,
         logEntryId: Long? = null,
     ) {
         phaseAnnouncementJob?.cancel()
+        val phaseStartNumber = monitoredState.phaseStartNumber
         phaseAnnouncementJob = serviceScope.launch {
             try {
                 Log.i(
                     TAG,
                     "Dispatching phase announcement for ${phase.name} " +
-                        "source=$source logEntryId=${logEntryId ?: "none"}",
+                        "source=$source logEntryId=${logEntryId ?: "none"} " +
+                        "phaseStartNumber=$phaseStartNumber",
                 )
-                announcePhaseTransition(phase, logEntryId = logEntryId)
+                announcePhaseTransition(
+                    phase = phase,
+                    logEntryId = logEntryId,
+                    onSpeechCompleted = {
+                        serviceScope.launch {
+                            handlePhaseStartSpeechCompleted(
+                                phase = phase,
+                                phaseStartNumber = phaseStartNumber,
+                            )
+                        }
+                    },
+                )
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
                 Log.e(TAG, "Phase announcement failed for ${phase.name} source=$source", error)
             }
         }
+    }
+
+    private fun handlePhaseStartSpeechCompleted(
+        phase: WalkingPhase,
+        phaseStartNumber: Long,
+    ) {
+        val latestState = currentPhaseMonitorState(SystemClock.elapsedRealtime())
+        if (
+            !latestState.state.isRunning ||
+            latestState.phaseStartNumber != phaseStartNumber ||
+            latestState.state.currentPhase != phase
+        ) {
+            Log.i(
+                TAG,
+                "Skipping post-speech first beep because phase context is stale " +
+                    "expectedPhase=${phase.name} expectedPhaseStartNumber=$phaseStartNumber",
+            )
+            return
+        }
+
+        val firstBeepAt = SystemClock.elapsedRealtime()
+        Log.i(
+            TAG,
+            "Playing post-speech first beep at=$firstBeepAt phase=${phase.name} " +
+                "phaseStartNumber=$phaseStartNumber",
+        )
+        phaseAudioPlayer.setBeepVolume(synchronized(stateLock) { beepVolume })
+        phaseAudioPlayer.playBeep(phaseBeepPitchPreset(phase))
+
+        val regularScheduleStartAt = SystemClock.elapsedRealtime()
+        Log.i(
+            TAG,
+            "Starting regular phase beep schedule at=$regularScheduleStartAt " +
+                "phase=${phase.name} phaseStartNumber=$phaseStartNumber",
+        )
+        scheduleRegularPhaseBeepPlayback(latestState)
     }
 
     @Synchronized
@@ -854,6 +920,44 @@ class WalkingTimerService : Service() {
             job.cancel()
         }
         phaseElapsedMilestoneJob = null
+    }
+
+    @Synchronized
+    private fun scheduleRegularPhaseBeepPlayback(monitoredState: PhaseMonitorState) {
+        cancelPhaseBeepJob("reschedule regular phase beeps after speech")
+        val state = monitoredState.state
+        if (!state.isRunning || monitoredState.phaseStartNumber == UNINITIALIZED_PHASE_START_NUMBER) {
+            return
+        }
+
+        val phase = state.currentPhase
+        val intervalSeconds = phaseBeepIntervalSeconds(phase)
+        val intervalMillis = (intervalSeconds * 1_000f).roundToLong()
+        if (intervalMillis <= 0L) {
+            return
+        }
+
+        phaseBeepJob = serviceScope.launch {
+            val phaseStartNumber = monitoredState.phaseStartNumber
+            var nextDelayMillis = intervalMillis
+            while (true) {
+                delay(nextDelayMillis)
+                val latestState = currentPhaseMonitorState(SystemClock.elapsedRealtime())
+                if (
+                    !latestState.state.isRunning ||
+                    latestState.phaseStartNumber != phaseStartNumber ||
+                    latestState.state.currentPhase != phase
+                ) {
+                    return@launch
+                }
+                Log.i(
+                    TAG,
+                    "Dispatching ${phase.name} phase beep intervalSeconds=$intervalSeconds",
+                )
+                phaseAudioPlayer.playBeep(phaseBeepPitchPreset(phase))
+                nextDelayMillis = intervalMillis
+            }
+        }
     }
 
     @Synchronized

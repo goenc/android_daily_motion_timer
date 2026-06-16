@@ -43,10 +43,15 @@ internal class PhaseAudioPlayer(context: Context) {
         Log.i(TAG, "Initialized AudioTrack cueAudioData=${cueAudioData.keys}")
     }
 
-    fun play(phase: WalkingPhase, logEntryId: Long? = null) {
+    fun play(
+        phase: WalkingPhase,
+        logEntryId: Long? = null,
+        onCompleted: (() -> Unit)? = null,
+    ) {
         playSpeech(
             cue = AudioCue.phaseStart(phase),
             logEntryId = logEntryId,
+            onCompleted = onCompleted,
         )
     }
 
@@ -75,12 +80,17 @@ internal class PhaseAudioPlayer(context: Context) {
                     volume = beepVolume,
                     beepPitchPreset = pitchPreset,
                     logEntryId = null,
+                    onCompleted = null,
                 ),
             )
         }
     }
 
-    private fun playSpeech(cue: AudioCue, logEntryId: Long?) {
+    private fun playSpeech(
+        cue: AudioCue,
+        logEntryId: Long?,
+        onCompleted: (() -> Unit)? = null,
+    ) {
         if (isReleased) {
             Log.w(TAG, "Ignoring ${cue.description} cue because audio player is released")
             return
@@ -93,6 +103,7 @@ internal class PhaseAudioPlayer(context: Context) {
                 volume = announcementVolume,
                 beepPitchPreset = null,
                 logEntryId = logEntryId,
+                onCompleted = onCompleted,
             )
             val playRequestedElapsedRealtime = SystemClock.elapsedRealtime()
             if (logEntryId != null) {
@@ -216,6 +227,13 @@ internal class PhaseAudioPlayer(context: Context) {
             "Started ${request.description} cue playback playbackId=$playbackId " +
                 "volume=$playbackVolume at=$playbackStartedElapsedRealtime",
         )
+        if (request.kind == PlaybackKind.SPEECH && request.onCompleted != null) {
+            Log.i(
+                TAG,
+                "Phase start speech playback started at=$playbackStartedElapsedRealtime " +
+                    "playbackId=$playbackId",
+            )
+        }
         schedulePlaybackCompletionLocked(request, playbackId)
     }
 
@@ -230,11 +248,27 @@ internal class PhaseAudioPlayer(context: Context) {
             if (currentPlayback?.playbackId == playbackId) {
                 currentPlayback = null
             }
-            Log.i(TAG, "Completed ${request.description} cue playback playbackId=$playbackId")
+            val completedAt = SystemClock.elapsedRealtime()
+            Log.i(
+                TAG,
+                "Completed ${request.description} cue playback playbackId=$playbackId at=$completedAt",
+            )
+            if (request.kind == PlaybackKind.SPEECH) {
+                request.onCompleted?.let { callback ->
+                    Log.i(
+                        TAG,
+                        "Phase start speech considered complete at=$completedAt playbackId=$playbackId",
+                    )
+                    callback()
+                }
+            }
             drainQueuedPlayback()
         }
         pendingPlaybackCompleteRunnable = completionRunnable
-        audioHandler.postDelayed(completionRunnable, request.audioData.playbackCleanupDelayMillis())
+        audioHandler.postDelayed(
+            completionRunnable,
+            request.audioData.playbackCleanupDelayMillis(request.kind),
+        )
     }
 
     private fun cancelPendingPlaybackCompleteLocked() {
@@ -290,15 +324,15 @@ internal class PhaseAudioPlayer(context: Context) {
         startPlaybackLocked(nextBeep)
     }
 
-    private fun WavAudioData.playbackCleanupDelayMillis(): Long {
-        return (durationMillis + PLAYBACK_CLEANUP_GRACE_MILLIS)
-            .coerceAtLeast(DEFAULT_PLAYBACK_CLEANUP_DELAY_MILLIS)
+    private fun WavAudioData.playbackCleanupDelayMillis(kind: PlaybackKind): Long {
+        return when (kind) {
+            PlaybackKind.SPEECH -> speechPlaybackCleanupDelayMillis(durationMillis)
+            PlaybackKind.BEEP -> beepPlaybackCleanupDelayMillis(durationMillis)
+        }
     }
 
     private companion object {
         private const val TAG = "PhaseAudioPlayer"
-        private const val DEFAULT_PLAYBACK_CLEANUP_DELAY_MILLIS = 1500L
-        private const val PLAYBACK_CLEANUP_GRACE_MILLIS = 200L
         private const val PCM_FORMAT = 1
         private const val PCM_16_BIT = 16
     }
@@ -310,6 +344,7 @@ internal class PhaseAudioPlayer(context: Context) {
         val volume: Float,
         val beepPitchPreset: BeepPitchPreset?,
         val logEntryId: Long?,
+        val onCompleted: (() -> Unit)?,
     )
 
     private data class ActivePlayback(
@@ -522,3 +557,14 @@ internal class PhaseAudioPlayer(context: Context) {
         }
     }
 }
+
+internal fun speechPlaybackCleanupDelayMillis(durationMillis: Long): Long {
+    return durationMillis + SPEECH_PLAYBACK_CLEANUP_GRACE_MILLIS
+}
+
+internal fun beepPlaybackCleanupDelayMillis(durationMillis: Long): Long {
+    return durationMillis + BEEP_PLAYBACK_CLEANUP_GRACE_MILLIS
+}
+
+private const val SPEECH_PLAYBACK_CLEANUP_GRACE_MILLIS = 200L
+private const val BEEP_PLAYBACK_CLEANUP_GRACE_MILLIS = 100L
