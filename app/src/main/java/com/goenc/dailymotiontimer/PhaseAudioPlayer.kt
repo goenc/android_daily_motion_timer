@@ -241,12 +241,24 @@ internal class PhaseAudioPlayer(context: Context) {
 
     private fun schedulePlaybackCompletionLocked(request: PendingPlayback, playbackId: Int) {
         cancelPendingPlaybackCompleteLocked()
+        val cleanupDelayMillis = request.playbackCleanupDelayMillis()
+        Log.i(
+            TAG,
+            "Scheduled ${request.description} cue completion playbackId=$playbackId " +
+                "kind=${request.kind} durationMillis=${request.audioData.durationMillis} " +
+                "cleanupDelayMillis=$cleanupDelayMillis",
+        )
         val completionRunnable = Runnable {
             pendingPlaybackCompleteRunnable = null
             if (currentPlaybackId != playbackId) {
                 return@Runnable
             }
-            releaseCurrentAudioTrackLocked()
+            releaseCurrentAudioTrackLocked(
+                stopBeforeRelease = false,
+                releaseReason = "normal completion",
+                playbackId = playbackId,
+                description = request.description,
+            )
             if (currentPlayback?.playbackId == playbackId) {
                 currentPlayback = null
             }
@@ -267,7 +279,7 @@ internal class PhaseAudioPlayer(context: Context) {
             drainQueuedPlayback()
         }
         pendingPlaybackCompleteRunnable = completionRunnable
-        audioHandler.postDelayed(completionRunnable, request.playbackCleanupDelayMillis())
+        audioHandler.postDelayed(completionRunnable, cleanupDelayMillis)
     }
 
     private fun cancelPendingPlaybackCompleteLocked() {
@@ -279,21 +291,39 @@ internal class PhaseAudioPlayer(context: Context) {
         cancelPendingPlaybackCompleteLocked()
         val stoppedPlaybackId = currentPlaybackId
         if (currentAudioTrack != null) {
-            releaseCurrentAudioTrackLocked()
+            releaseCurrentAudioTrackLocked(
+                stopBeforeRelease = true,
+                releaseReason = reason,
+                playbackId = stoppedPlaybackId,
+                description = currentPlayback?.request?.description,
+            )
             Log.i(TAG, "Stopped cue playback playbackId=$stoppedPlaybackId reason=$reason")
         }
         currentPlayback = null
     }
 
-    private fun releaseCurrentAudioTrackLocked() {
+    private fun releaseCurrentAudioTrackLocked(
+        stopBeforeRelease: Boolean,
+        releaseReason: String,
+        playbackId: Int,
+        description: String?,
+    ) {
         currentAudioTrack?.let { audioTrack ->
-            runCatching {
-                audioTrack.stop()
-            }.onFailure { error ->
-                Log.w(TAG, "Failed to stop cue playback", error)
+            if (stopBeforeRelease) {
+                runCatching {
+                    audioTrack.stop()
+                }.onFailure { error ->
+                    Log.w(TAG, "Failed to stop cue playback", error)
+                }
             }
             runCatching {
                 audioTrack.release()
+                Log.i(
+                    TAG,
+                    "Released cue playback playbackId=$playbackId " +
+                        "cue=${description ?: "unknown"} stopBeforeRelease=$stopBeforeRelease " +
+                        "reason=$releaseReason",
+                )
             }.onFailure { error ->
                 Log.w(TAG, "Failed to release cue playback", error)
             }
@@ -334,7 +364,7 @@ internal class PhaseAudioPlayer(context: Context) {
     private companion object {
         private const val TAG = "PhaseAudioPlayer"
         private const val SPEECH_PLAYBACK_CLEANUP_GRACE_MILLIS = 200L
-        private const val BEEP_PLAYBACK_CLEANUP_GRACE_MILLIS = 80L
+        private const val BEEP_PLAYBACK_CLEANUP_GRACE_MILLIS = 300L
         private const val PCM_FORMAT = 1
         private const val PCM_16_BIT = 16
     }
