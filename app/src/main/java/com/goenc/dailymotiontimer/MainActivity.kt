@@ -114,6 +114,7 @@ class MainActivity : ComponentActivity() {
                             onFastPhaseBeepIntervalChange = viewModel::updateFastPhaseBeepIntervalSeconds,
                             onSlowPhaseBeepIntervalChange = viewModel::updateSlowPhaseBeepIntervalSeconds,
                             onStartHeartRateScan = startHeartRateScan,
+                            onReconnectSavedDevice = viewModel::connectSavedHeartRateDevice,
                             onConnectHeartRateDevice = viewModel::connectHeartRateDevice,
                             onDisconnectHeartRateDevice = viewModel::disconnectHeartRateDevice,
                             onForgetHeartRateDevice = viewModel::forgetHeartRateDevice,
@@ -359,6 +360,7 @@ private fun SettingsScreen(
     onFastPhaseBeepIntervalChange: (Float) -> Unit,
     onSlowPhaseBeepIntervalChange: (Float) -> Unit,
     onStartHeartRateScan: () -> Unit,
+    onReconnectSavedDevice: () -> Unit,
     onConnectHeartRateDevice: (String) -> Unit,
     onDisconnectHeartRateDevice: () -> Unit,
     onForgetHeartRateDevice: () -> Unit,
@@ -408,6 +410,7 @@ private fun SettingsScreen(
                 HeartRateSettingsSection(
                     state = heartRateUiState,
                     onStartScan = onStartHeartRateScan,
+                    onReconnectSavedDevice = onReconnectSavedDevice,
                     onConnectDevice = onConnectHeartRateDevice,
                     onDisconnect = onDisconnectHeartRateDevice,
                     onForgetDevice = onForgetHeartRateDevice,

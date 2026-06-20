@@ -66,6 +66,7 @@ fun HeartRateStatus(
 fun HeartRateSettingsSection(
     state: HeartRateUiState,
     onStartScan: () -> Unit,
+    onReconnectSavedDevice: () -> Unit,
     onConnectDevice: (String) -> Unit,
     onDisconnect: () -> Unit,
     onForgetDevice: () -> Unit,
@@ -87,42 +88,49 @@ fun HeartRateSettingsSection(
             Text(stringResource(R.string.heart_rate_saved_device, device.name), fontWeight = FontWeight.Bold)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = onStartScan) {
-                Text(stringResource(R.string.heart_rate_scan))
-            }
-            if (
-                state.connectionState == HeartRateConnectionState.CONNECTED ||
-                state.connectionState == HeartRateConnectionState.CONNECTING
-            ) {
-                OutlinedButton(onClick = onDisconnect) {
-                    Text(stringResource(R.string.heart_rate_disconnect))
+            if (state.savedDevice == null) {
+                Button(onClick = onStartScan) {
+                    Text(stringResource(R.string.heart_rate_scan))
                 }
-            }
-            if (state.savedDevice != null) {
+            } else {
+                if (
+                    state.connectionState == HeartRateConnectionState.CONNECTED ||
+                    state.connectionState == HeartRateConnectionState.CONNECTING
+                ) {
+                    OutlinedButton(onClick = onDisconnect) {
+                        Text(stringResource(R.string.heart_rate_disconnect))
+                    }
+                } else {
+                    Button(onClick = onReconnectSavedDevice) {
+                        Text(stringResource(R.string.heart_rate_reconnect))
+                    }
+                }
                 OutlinedButton(onClick = onForgetDevice) {
                     Text(stringResource(R.string.heart_rate_forget))
                 }
             }
         }
-        state.devices.forEach { device ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
-                    Text(
-                        text = if (device.supportsHeartRate) {
-                            stringResource(R.string.heart_rate_supported_device, device.name)
-                        } else {
-                            device.name
-                        },
-                        fontWeight = if (device.supportsHeartRate) FontWeight.Bold else FontWeight.Normal,
-                    )
-                    Text("${device.address} / ${device.rssi} dBm", style = MaterialTheme.typography.bodySmall)
-                }
-                Button(onClick = { onConnectDevice(device.address) }) {
-                    Text(stringResource(R.string.heart_rate_connect))
+        if (state.savedDevice == null) {
+            state.devices.forEach { device ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                        Text(
+                            text = if (device.supportsHeartRate) {
+                                stringResource(R.string.heart_rate_supported_device, device.name)
+                            } else {
+                                device.name
+                            },
+                            fontWeight = if (device.supportsHeartRate) FontWeight.Bold else FontWeight.Normal,
+                        )
+                        Text("${device.address} / ${device.rssi} dBm", style = MaterialTheme.typography.bodySmall)
+                    }
+                    Button(onClick = { onConnectDevice(device.address) }) {
+                        Text(stringResource(R.string.heart_rate_connect))
+                    }
                 }
             }
         }
