@@ -1,5 +1,6 @@
 package com.goenc.dailymotiontimer.heartrate
 
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -20,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.goenc.dailymotiontimer.R
@@ -331,12 +333,20 @@ fun HeartRateSettingsSection(
                     )
                 }
                 if (isSelected) {
-                    Button(onClick = onClick, modifier = Modifier.weight(1f)) {
-                        Text(mode.label)
+                    Button(
+                        onClick = onClick,
+                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
+                    ) {
+                        HeartRateAlertPhaseModeLabel(mode.label)
                     }
                 } else {
-                    OutlinedButton(onClick = onClick, modifier = Modifier.weight(1f)) {
-                        Text(mode.label)
+                    OutlinedButton(
+                        onClick = onClick,
+                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
+                    ) {
+                        HeartRateAlertPhaseModeLabel(mode.label)
                     }
                 }
             }
@@ -345,6 +355,16 @@ fun HeartRateSettingsSection(
             Text(text = it, color = MaterialTheme.colorScheme.error)
         }
     }
+}
+
+@Composable
+private fun HeartRateAlertPhaseModeLabel(label: String) {
+    Text(
+        text = label,
+        style = MaterialTheme.typography.labelSmall,
+        textAlign = TextAlign.Center,
+        maxLines = 1,
+    )
 }
 
 @Composable
