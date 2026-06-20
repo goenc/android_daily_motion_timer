@@ -2,13 +2,17 @@ package com.goenc.dailymotiontimer
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
+import com.goenc.dailymotiontimer.heartrate.HeartRateController
+import com.goenc.dailymotiontimer.heartrate.HeartRateUiState
 import kotlinx.coroutines.flow.StateFlow
 
 class TimerViewModel(application: Application) : AndroidViewModel(application) {
     val uiState: StateFlow<TimerUiState> = WalkingTimerController.uiState
+    val heartRateUiState: StateFlow<HeartRateUiState> = HeartRateController.uiState
 
     init {
         WalkingTimerController.restoreState(getApplication())
+        HeartRateController.initialize(getApplication())
     }
 
     fun startOrResume() {
@@ -65,5 +69,41 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setAppVisible(isVisible: Boolean) {
         WalkingTimerController.setAppVisible(getApplication(), isVisible)
+    }
+
+    fun connectSavedHeartRateDevice() {
+        HeartRateController.connectSavedDevice(getApplication())
+    }
+
+    fun startHeartRateScan() {
+        HeartRateController.startScan(getApplication())
+    }
+
+    fun stopHeartRateScan() {
+        HeartRateController.stopScan()
+    }
+
+    fun connectHeartRateDevice(address: String) {
+        HeartRateController.selectDevice(getApplication(), address)
+    }
+
+    fun disconnectHeartRateDevice() {
+        HeartRateController.disconnect(getApplication())
+    }
+
+    fun forgetHeartRateDevice() {
+        HeartRateController.forgetDevice(getApplication())
+    }
+
+    fun updateHeartRateSettings(age: Int, alertsEnabled: Boolean) {
+        HeartRateController.updateSettings(getApplication(), age, alertsEnabled)
+    }
+
+    fun hasHeartRatePermissions(): Boolean = HeartRateController.hasBluetoothPermissions(getApplication())
+
+    fun heartRatePermissions(): Array<String> = HeartRateController.requiredPermissions()
+
+    fun reportHeartRatePermissionDenied() {
+        HeartRateController.reportPermissionDenied()
     }
 }

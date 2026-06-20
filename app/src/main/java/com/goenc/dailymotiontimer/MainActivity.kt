@@ -56,6 +56,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import com.goenc.dailymotiontimer.heartrate.HeartRateSettingsSection
+import com.goenc.dailymotiontimer.heartrate.HeartRateStatus
+import com.goenc.dailymotiontimer.heartrate.HeartRateUiState
 import com.goenc.dailymotiontimer.ui.theme.WorkoutFlowTimerTheme
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
@@ -70,15 +73,35 @@ class MainActivity : ComponentActivity() {
             WorkoutFlowTimerTheme {
                 NotificationPermissionEffect()
                 val uiState by viewModel.uiState.collectAsState()
+                val heartRateUiState by viewModel.heartRateUiState.collectAsState()
                 val displayState = rememberDisplayState(uiState)
                 var isSettingsScreenVisible by rememberSaveable { mutableStateOf(false) }
+                val heartRatePermissionLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.RequestMultiplePermissions(),
+                ) {
+                    if (viewModel.hasHeartRatePermissions()) {
+                        viewModel.startHeartRateScan()
+                    } else {
+                        viewModel.reportHeartRatePermissionDenied()
+                    }
+                }
+                val startHeartRateScan = {
+                    if (viewModel.hasHeartRatePermissions()) {
+                        viewModel.startHeartRateScan()
+                    } else {
+                        heartRatePermissionLauncher.launch(viewModel.heartRatePermissions())
+                    }
+                }
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
                 ) { innerPadding ->
                     if (isSettingsScreenVisible) {
                         SettingsScreen(
                             uiState = displayState,
+                            heartRateUiState = heartRateUiState,
                             modifier = Modifier.padding(innerPadding),
+                            onFastPhaseDurationChange = viewModel::updateFastPhaseDurationSeconds,
+                            onSlowPhaseDurationChange = viewModel::updateSlowPhaseDurationSeconds,
                             onAnnouncementVolumeChange = viewModel::updateAnnouncementVolume,
                             onBeepVolumeChange = viewModel::updateBeepVolume,
                             onVibrationEnabledChange = viewModel::updateVibrationEnabled,
@@ -86,11 +109,20 @@ class MainActivity : ComponentActivity() {
                             onSlowPhaseBeepPitchChange = viewModel::updateSlowPhaseBeepPitchPreset,
                             onFastPhaseBeepIntervalChange = viewModel::updateFastPhaseBeepIntervalSeconds,
                             onSlowPhaseBeepIntervalChange = viewModel::updateSlowPhaseBeepIntervalSeconds,
-                            onBackClick = { isSettingsScreenVisible = false },
+                            onStartHeartRateScan = startHeartRateScan,
+                            onConnectHeartRateDevice = viewModel::connectHeartRateDevice,
+                            onDisconnectHeartRateDevice = viewModel::disconnectHeartRateDevice,
+                            onForgetHeartRateDevice = viewModel::forgetHeartRateDevice,
+                            onHeartRateSettingsChange = viewModel::updateHeartRateSettings,
+                            onBackClick = {
+                                viewModel.stopHeartRateScan()
+                                isSettingsScreenVisible = false
+                            },
                         )
                     } else {
                         TimerScreen(
                             uiState = displayState,
+                            heartRateUiState = heartRateUiState,
                             modifier = Modifier.padding(innerPadding),
                             onStartPauseClick = {
                                 if (displayState.isRunning) {
@@ -100,8 +132,6 @@ class MainActivity : ComponentActivity() {
                                 }
                             },
                             onStopClick = viewModel::stop,
-                            onFastPhaseDurationChange = viewModel::updateFastPhaseDurationSeconds,
-                            onSlowPhaseDurationChange = viewModel::updateSlowPhaseDurationSeconds,
                             onOpenOverlaySettingsClick = ::openOverlaySettings,
                             onOpenSettingsClick = { isSettingsScreenVisible = true },
                         )
@@ -114,9 +144,11 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         viewModel.setAppVisible(true)
+        viewModel.connectSavedHeartRateDevice()
     }
 
     override fun onStop() {
+        viewModel.stopHeartRateScan()
         viewModel.setAppVisible(false)
         super.onStop()
     }
@@ -166,23 +198,15 @@ private fun CenteredElapsedTimeText(
 @Composable
 private fun TimerScreen(
     uiState: TimerUiState,
+    heartRateUiState: HeartRateUiState,
     modifier: Modifier = Modifier,
     onStartPauseClick: () -> Unit,
     onStopClick: () -> Unit,
-    onFastPhaseDurationChange: (Int) -> Unit,
-    onSlowPhaseDurationChange: (Int) -> Unit,
     onOpenOverlaySettingsClick: () -> Unit,
     onOpenSettingsClick: () -> Unit,
 ) {
     val context = LocalContext.current
     val activeTextColor = if (uiState.isRunning) Color.Black else Color.Unspecified
-    val runningSliderColors = SliderDefaults.colors(
-        disabledThumbColor = Color.Black,
-        disabledActiveTrackColor = Color.Black,
-        disabledInactiveTrackColor = Color.DarkGray,
-        disabledActiveTickColor = Color.Black,
-        disabledInactiveTickColor = Color.DarkGray,
-    )
     val screenBackgroundColor = when {
         uiState.isRunning -> Color(0xFFC8E6C9)
         uiState.isPaused -> Color(0xFFFFE0B2)
@@ -239,27 +263,12 @@ private fun TimerScreen(
             fontWeight = FontWeight.Bold,
             color = activeTextColor,
         )
+        Spacer(modifier = Modifier.height(20.dp))
+        HeartRateStatus(
+            state = heartRateUiState,
+            textColor = activeTextColor,
+        )
         Spacer(modifier = Modifier.height(32.dp))
-        PhaseDurationSlider(
-            title = stringResource(R.string.fast_phase_duration_label),
-            selectedDurationLabel = uiState.formattedFastPhaseDuration,
-            selectedDurationSeconds = uiState.fastPhaseDurationSeconds,
-            enabled = !uiState.isActive,
-            textColor = activeTextColor,
-            sliderColors = if (uiState.isRunning) runningSliderColors else SliderDefaults.colors(),
-            onDurationChange = onFastPhaseDurationChange,
-        )
-        Spacer(modifier = Modifier.height(20.dp))
-        PhaseDurationSlider(
-            title = stringResource(R.string.slow_phase_duration_label),
-            selectedDurationLabel = uiState.formattedSlowPhaseDuration,
-            selectedDurationSeconds = uiState.slowPhaseDurationSeconds,
-            enabled = !uiState.isActive,
-            textColor = activeTextColor,
-            sliderColors = if (uiState.isRunning) runningSliderColors else SliderDefaults.colors(),
-            onDurationChange = onSlowPhaseDurationChange,
-        )
-        Spacer(modifier = Modifier.height(20.dp))
         if (uiState.isActive && !Settings.canDrawOverlays(context)) {
             Spacer(modifier = Modifier.height(16.dp))
             Text(
@@ -315,7 +324,10 @@ private fun TimerScreen(
 @Composable
 private fun SettingsScreen(
     uiState: TimerUiState,
+    heartRateUiState: HeartRateUiState,
     modifier: Modifier = Modifier,
+    onFastPhaseDurationChange: (Int) -> Unit,
+    onSlowPhaseDurationChange: (Int) -> Unit,
     onAnnouncementVolumeChange: (Float) -> Unit,
     onBeepVolumeChange: (Float) -> Unit,
     onVibrationEnabledChange: (Boolean) -> Unit,
@@ -323,6 +335,11 @@ private fun SettingsScreen(
     onSlowPhaseBeepPitchChange: (BeepPitchPreset) -> Unit,
     onFastPhaseBeepIntervalChange: (Float) -> Unit,
     onSlowPhaseBeepIntervalChange: (Float) -> Unit,
+    onStartHeartRateScan: () -> Unit,
+    onConnectHeartRateDevice: (String) -> Unit,
+    onDisconnectHeartRateDevice: () -> Unit,
+    onForgetHeartRateDevice: () -> Unit,
+    onHeartRateSettingsChange: (Int, Boolean) -> Unit,
     onBackClick: () -> Unit,
 ) {
     Column(
@@ -349,6 +366,31 @@ private fun SettingsScreen(
             }
         }
         Spacer(modifier = Modifier.height(24.dp))
+        HeartRateSettingsSection(
+            state = heartRateUiState,
+            onStartScan = onStartHeartRateScan,
+            onConnectDevice = onConnectHeartRateDevice,
+            onDisconnect = onDisconnectHeartRateDevice,
+            onForgetDevice = onForgetHeartRateDevice,
+            onSettingsChange = onHeartRateSettingsChange,
+        )
+        Spacer(modifier = Modifier.height(32.dp))
+        PhaseDurationSlider(
+            title = stringResource(R.string.fast_phase_duration_label),
+            selectedDurationLabel = uiState.formattedFastPhaseDuration,
+            selectedDurationSeconds = uiState.fastPhaseDurationSeconds,
+            enabled = !uiState.isActive,
+            onDurationChange = onFastPhaseDurationChange,
+        )
+        Spacer(modifier = Modifier.height(20.dp))
+        PhaseDurationSlider(
+            title = stringResource(R.string.slow_phase_duration_label),
+            selectedDurationLabel = uiState.formattedSlowPhaseDuration,
+            selectedDurationSeconds = uiState.slowPhaseDurationSeconds,
+            enabled = !uiState.isActive,
+            onDurationChange = onSlowPhaseDurationChange,
+        )
+        Spacer(modifier = Modifier.height(20.dp))
         AnnouncementVolumeSlider(
             title = stringResource(R.string.announcement_volume_label),
             announcementVolume = uiState.announcementVolume,
@@ -660,10 +702,9 @@ private fun TimerScreenPreview() {
     WorkoutFlowTimerTheme {
         TimerScreen(
             uiState = TimerUiState(),
+            heartRateUiState = HeartRateUiState(),
             onStartPauseClick = {},
             onStopClick = {},
-            onFastPhaseDurationChange = {},
-            onSlowPhaseDurationChange = {},
             onOpenOverlaySettingsClick = {},
             onOpenSettingsClick = {},
         )

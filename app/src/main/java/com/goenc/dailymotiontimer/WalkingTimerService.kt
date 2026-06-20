@@ -1,5 +1,7 @@
 package com.goenc.dailymotiontimer
 
+import android.Manifest
+import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -7,6 +9,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
@@ -17,6 +20,7 @@ import android.os.VibratorManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -427,6 +431,7 @@ class WalkingTimerService : Service() {
         )
     }
 
+    @SuppressLint("MissingPermission")
     private fun showNotification(state: TimerUiState, promoteToForeground: Boolean) {
         val notification = buildNotification(state)
         if (promoteToForeground || !hasForegroundNotification) {
@@ -434,15 +439,24 @@ class WalkingTimerService : Service() {
             hasForegroundNotification = true
             return
         }
-        NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, notification)
+        if (canPostNotifications()) {
+            NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, notification)
+        }
     }
 
+    @SuppressLint("MissingPermission")
     private fun updateNotification(state: TimerUiState) {
         if (!state.isActive || !hasForegroundNotification) {
             return
         }
-        NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, buildNotification(state))
+        if (canPostNotifications()) {
+            NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, buildNotification(state))
+        }
     }
+
+    private fun canPostNotifications(): Boolean = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+        ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
+        PackageManager.PERMISSION_GRANTED
 
     private fun updatePhaseOverlay(state: TimerUiState) {
         if (state.isActive && !isAppVisible) {

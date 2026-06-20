@@ -31,4 +31,18 @@
     <string name="notification_paused">タイマー一時停止中</string>
     <string name="timer_notification_channel_name">歩行タイマー</string>
     <string name="timer_notification_channel_description">歩行タイマーの進行状況を表示します</string>
+    <string name="heart_rate_value">心拍 %1$d bpm</string>
+    <string name="heart_rate_unavailable">心拍 -- bpm</string>
+    <string name="heart_rate_status_detail">平均 %1$s bpm / %2$s / %3$s</string>
+    <string name="heart_rate_settings_title">心拍モニター</string>
+    <string name="heart_rate_connection_state">接続状態: %1$s</string>
+    <string name="heart_rate_saved_device">登録機器: %1$s</string>
+    <string name="heart_rate_scan">機器を検索</string>
+    <string name="heart_rate_connect">接続</string>
+    <string name="heart_rate_disconnect">切断</string>
+    <string name="heart_rate_forget">登録解除</string>
+    <string name="heart_rate_supported_device">%1$s [心拍対応]</string>
+    <string name="heart_rate_age">年齢: %1$d歳</string>
+    <string name="heart_rate_target_range">目標 %1$d〜%2$d bpm / 危険 %3$d bpm以上</string>
+    <string name="heart_rate_voice_alert">範囲外の音声警告</string>
 </resources>
