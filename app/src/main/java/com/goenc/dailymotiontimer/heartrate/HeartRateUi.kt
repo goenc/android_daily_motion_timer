@@ -75,6 +75,7 @@ fun HeartRateSettingsSection(
         targetUpperBpm: Int,
         dangerThresholdBpm: Int,
         alertsEnabled: Boolean,
+        confirmSeconds: Int,
         alertPhaseMode: HeartRateAlertPhaseMode,
     ) -> Unit,
     modifier: Modifier = Modifier,
@@ -87,6 +88,9 @@ fun HeartRateSettingsSection(
     }
     var dangerThresholdValue by remember(state.settings.dangerThresholdBpm) {
         mutableFloatStateOf(state.settings.dangerThresholdBpm.toFloat())
+    }
+    var confirmSecondsValue by remember(state.settings.confirmSeconds) {
+        mutableFloatStateOf(state.settings.confirmSeconds.toFloat())
     }
     Column(
         modifier = modifier.fillMaxWidth(),
@@ -160,6 +164,10 @@ fun HeartRateSettingsSection(
             normalizedTargetUpper + 1,
             MAX_HEART_RATE_THRESHOLD_BPM,
         )
+        val normalizedConfirmSeconds = confirmSecondsValue.roundToInt().coerceIn(
+            MIN_CONFIRM_SECONDS,
+            MAX_CONFIRM_SECONDS,
+        )
         Text(
             text = stringResource(R.string.heart_rate_target_lower, normalizedTargetLower),
             style = MaterialTheme.typography.titleMedium,
@@ -179,6 +187,7 @@ fun HeartRateSettingsSection(
                     normalizedTargetUpper,
                     normalizedDangerThreshold,
                     state.settings.alertsEnabled,
+                    normalizedConfirmSeconds,
                     state.settings.alertPhaseMode,
                 )
             },
@@ -204,6 +213,7 @@ fun HeartRateSettingsSection(
                     normalizedTargetUpper,
                     normalizedDangerThreshold,
                     state.settings.alertsEnabled,
+                    normalizedConfirmSeconds,
                     state.settings.alertPhaseMode,
                 )
             },
@@ -229,6 +239,7 @@ fun HeartRateSettingsSection(
                     normalizedTargetUpper,
                     normalizedDangerThreshold,
                     state.settings.alertsEnabled,
+                    normalizedConfirmSeconds,
                     state.settings.alertPhaseMode,
                 )
             },
@@ -261,11 +272,38 @@ fun HeartRateSettingsSection(
                         normalizedTargetUpper,
                         normalizedDangerThreshold,
                         enabled,
+                        normalizedConfirmSeconds,
                         state.settings.alertPhaseMode,
                     )
                 },
             )
         }
+        Text(
+            text = stringResource(R.string.heart_rate_alert_confirm_seconds, normalizedConfirmSeconds),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+        )
+        Slider(
+            value = normalizedConfirmSeconds.toFloat(),
+            onValueChange = { value ->
+                confirmSecondsValue = value.coerceIn(
+                    MIN_CONFIRM_SECONDS.toFloat(),
+                    MAX_CONFIRM_SECONDS.toFloat(),
+                )
+            },
+            onValueChangeFinished = {
+                onSettingsChange(
+                    normalizedTargetLower,
+                    normalizedTargetUpper,
+                    normalizedDangerThreshold,
+                    state.settings.alertsEnabled,
+                    normalizedConfirmSeconds,
+                    state.settings.alertPhaseMode,
+                )
+            },
+            valueRange = MIN_CONFIRM_SECONDS.toFloat()..MAX_CONFIRM_SECONDS.toFloat(),
+            steps = MAX_CONFIRM_SECONDS - MIN_CONFIRM_SECONDS - 1,
+        )
         Text(
             text = stringResource(R.string.heart_rate_alert_phase_mode),
             style = MaterialTheme.typography.titleMedium,
@@ -283,6 +321,7 @@ fun HeartRateSettingsSection(
                         normalizedTargetUpper,
                         normalizedDangerThreshold,
                         state.settings.alertsEnabled,
+                        normalizedConfirmSeconds,
                         mode,
                     )
                 }

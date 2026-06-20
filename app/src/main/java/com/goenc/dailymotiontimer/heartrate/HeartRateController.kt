@@ -104,6 +104,7 @@ object HeartRateController {
         targetUpperBpm: Int,
         dangerThresholdBpm: Int,
         alertsEnabled: Boolean,
+        confirmSeconds: Int,
         alertPhaseMode: HeartRateAlertPhaseMode,
     ) {
         val normalizedTargetLower = targetLowerBpm.coerceIn(
@@ -123,6 +124,7 @@ object HeartRateController {
             targetUpperBpm = normalizedTargetUpper,
             dangerThresholdBpm = normalizedDangerThreshold,
             alertsEnabled = alertsEnabled,
+            confirmSeconds = confirmSeconds.coerceIn(MIN_CONFIRM_SECONDS, MAX_CONFIRM_SECONDS),
             alertPhaseMode = alertPhaseMode,
         )
         HeartRatePreferences(context).saveSettings(settings)

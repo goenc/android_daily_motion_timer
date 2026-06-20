@@ -43,6 +43,10 @@ class HeartRatePreferences(context: Context) {
             targetUpperBpm = targetUpper,
             dangerThresholdBpm = dangerThreshold,
             alertsEnabled = preferences.getBoolean(KEY_ALERTS_ENABLED, true),
+            confirmSeconds = preferences.getInt(
+                KEY_CONFIRM_SECONDS,
+                HeartRateSettings().confirmSeconds,
+            ).coerceIn(MIN_CONFIRM_SECONDS, MAX_CONFIRM_SECONDS),
             alertPhaseMode = preferences.getString(
                 KEY_ALERT_PHASE_MODE,
                 HeartRateSettings().alertPhaseMode.name,
@@ -58,6 +62,7 @@ class HeartRatePreferences(context: Context) {
             .putInt(KEY_TARGET_UPPER_BPM, settings.targetUpperBpm)
             .putInt(KEY_DANGER_THRESHOLD_BPM, settings.dangerThresholdBpm)
             .putBoolean(KEY_ALERTS_ENABLED, settings.alertsEnabled)
+            .putInt(KEY_CONFIRM_SECONDS, settings.confirmSeconds)
             .putString(KEY_ALERT_PHASE_MODE, settings.alertPhaseMode.name)
             .apply()
     }
@@ -70,6 +75,7 @@ class HeartRatePreferences(context: Context) {
         const val KEY_TARGET_UPPER_BPM = "target_upper_bpm"
         const val KEY_DANGER_THRESHOLD_BPM = "danger_threshold_bpm"
         const val KEY_ALERTS_ENABLED = "alerts_enabled"
+        const val KEY_CONFIRM_SECONDS = "confirm_seconds"
         const val KEY_ALERT_PHASE_MODE = "alert_phase_mode"
     }
 }

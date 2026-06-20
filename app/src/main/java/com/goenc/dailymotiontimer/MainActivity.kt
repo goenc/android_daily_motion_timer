@@ -370,6 +370,7 @@ private fun SettingsScreen(
         targetUpperBpm: Int,
         dangerThresholdBpm: Int,
         alertsEnabled: Boolean,
+        confirmSeconds: Int,
         alertPhaseMode: HeartRateAlertPhaseMode,
     ) -> Unit,
     onBackClick: () -> Unit,

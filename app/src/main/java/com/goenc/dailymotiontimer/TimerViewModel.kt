@@ -101,6 +101,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         targetUpperBpm: Int,
         dangerThresholdBpm: Int,
         alertsEnabled: Boolean,
+        confirmSeconds: Int,
         alertPhaseMode: HeartRateAlertPhaseMode,
     ) {
         HeartRateController.updateSettings(
@@ -109,6 +110,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
             targetUpperBpm,
             dangerThresholdBpm,
             alertsEnabled,
+            confirmSeconds,
             alertPhaseMode,
         )
     }
