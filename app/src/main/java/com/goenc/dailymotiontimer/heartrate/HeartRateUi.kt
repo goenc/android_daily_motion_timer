@@ -100,13 +100,15 @@ fun HeartRateSettingsSection(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text(
-            text = stringResource(R.string.heart_rate_settings_title),
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold,
+            text = stringResource(R.string.heart_rate_connection_state, state.connectionState.label),
+            style = MaterialTheme.typography.bodyMedium,
         )
-        Text(stringResource(R.string.heart_rate_connection_state, state.connectionState.label))
         state.savedDevice?.let { device ->
-            Text(stringResource(R.string.heart_rate_saved_device, device.name), fontWeight = FontWeight.Bold)
+            Text(
+                text = stringResource(R.string.heart_rate_saved_device, device.name),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Bold,
+            )
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (state.savedDevice == null) {
@@ -145,9 +147,13 @@ fun HeartRateSettingsSection(
                             } else {
                                 device.name
                             },
+                            style = MaterialTheme.typography.bodyMedium,
                             fontWeight = if (device.supportsHeartRate) FontWeight.Bold else FontWeight.Normal,
                         )
-                        Text("${device.address} / ${device.rssi} dBm", style = MaterialTheme.typography.bodySmall)
+                        Text(
+                            text = "${device.address} / ${device.rssi} dBm",
+                            style = MaterialTheme.typography.labelSmall,
+                        )
                     }
                     Button(onClick = { onConnectDevice(device.address) }) {
                         Text(stringResource(R.string.heart_rate_connect))
@@ -173,7 +179,7 @@ fun HeartRateSettingsSection(
         )
         Text(
             text = stringResource(R.string.heart_rate_target_lower, normalizedTargetLower),
-            style = MaterialTheme.typography.titleMedium,
+            style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.Bold,
         )
         Slider(
@@ -199,7 +205,7 @@ fun HeartRateSettingsSection(
         )
         Text(
             text = stringResource(R.string.heart_rate_target_upper, normalizedTargetUpper),
-            style = MaterialTheme.typography.titleMedium,
+            style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.Bold,
         )
         Slider(
@@ -225,7 +231,7 @@ fun HeartRateSettingsSection(
         )
         Text(
             text = stringResource(R.string.heart_rate_danger_threshold, normalizedDangerThreshold),
-            style = MaterialTheme.typography.titleMedium,
+            style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.Bold,
         )
         Slider(
@@ -256,6 +262,7 @@ fun HeartRateSettingsSection(
                 state.rule.targetUpper,
                 state.rule.dangerThreshold,
             ),
+            style = MaterialTheme.typography.bodySmall,
         )
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -264,7 +271,7 @@ fun HeartRateSettingsSection(
         ) {
             Text(
                 text = stringResource(R.string.heart_rate_voice_alert),
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
             )
             Switch(
@@ -287,7 +294,7 @@ fun HeartRateSettingsSection(
         )
         Text(
             text = stringResource(R.string.heart_rate_alert_confirm_seconds, normalizedConfirmSeconds),
-            style = MaterialTheme.typography.titleMedium,
+            style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.Bold,
         )
         Slider(
@@ -313,7 +320,7 @@ fun HeartRateSettingsSection(
         )
         Text(
             text = stringResource(R.string.heart_rate_alert_phase_mode),
-            style = MaterialTheme.typography.titleMedium,
+            style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.Bold,
         )
         Row(
@@ -380,7 +387,7 @@ private fun HeartRateAlertVolumeSlider(
                 stringResource(R.string.heart_rate_alert_volume_label),
                 stringResource(R.string.announcement_volume_value, volumePercent),
             ),
-            style = MaterialTheme.typography.titleMedium,
+            style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.Bold,
         )
         Slider(
