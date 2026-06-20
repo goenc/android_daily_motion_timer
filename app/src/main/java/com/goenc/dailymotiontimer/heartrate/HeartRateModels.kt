@@ -74,7 +74,7 @@ data class HeartRateUiState(
 internal const val MIN_HEART_RATE_THRESHOLD_BPM = 40
 internal const val MAX_HEART_RATE_THRESHOLD_BPM = 220
 internal const val MIN_CONFIRM_SECONDS = 1
-internal const val MAX_CONFIRM_SECONDS = 30
+internal const val MAX_CONFIRM_SECONDS = 90
 internal const val DEFAULT_HEART_RATE_ALERT_VOLUME = 1.0f
 internal const val MAX_HEART_RATE_ALERT_VOLUME = 2.0f
 
