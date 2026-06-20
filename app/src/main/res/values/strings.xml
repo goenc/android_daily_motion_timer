@@ -44,7 +44,10 @@
     <string name="heart_rate_disconnect">切断</string>
     <string name="heart_rate_forget">登録解除</string>
     <string name="heart_rate_supported_device">%1$s [心拍対応]</string>
-    <string name="heart_rate_age">年齢: %1$d歳</string>
+    <string name="heart_rate_target_lower">目標下限: %1$d bpm</string>
+    <string name="heart_rate_target_upper">目標上限: %1$d bpm</string>
+    <string name="heart_rate_danger_threshold">危険しきい値: %1$d bpm</string>
     <string name="heart_rate_target_range">目標 %1$d〜%2$d bpm / 危険 %3$d bpm以上</string>
     <string name="heart_rate_voice_alert">範囲外の音声警告</string>
+    <string name="heart_rate_alert_phase_mode">読み上げタイミング</string>
 </resources>

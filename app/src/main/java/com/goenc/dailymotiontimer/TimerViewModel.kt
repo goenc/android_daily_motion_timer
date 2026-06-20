@@ -2,6 +2,7 @@ package com.goenc.dailymotiontimer
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
+import com.goenc.dailymotiontimer.heartrate.HeartRateAlertPhaseMode
 import com.goenc.dailymotiontimer.heartrate.HeartRateController
 import com.goenc.dailymotiontimer.heartrate.HeartRateUiState
 import kotlinx.coroutines.flow.StateFlow
@@ -95,8 +96,21 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         HeartRateController.forgetDevice(getApplication())
     }
 
-    fun updateHeartRateSettings(age: Int, alertsEnabled: Boolean) {
-        HeartRateController.updateSettings(getApplication(), age, alertsEnabled)
+    fun updateHeartRateSettings(
+        targetLowerBpm: Int,
+        targetUpperBpm: Int,
+        dangerThresholdBpm: Int,
+        alertsEnabled: Boolean,
+        alertPhaseMode: HeartRateAlertPhaseMode,
+    ) {
+        HeartRateController.updateSettings(
+            getApplication(),
+            targetLowerBpm,
+            targetUpperBpm,
+            dangerThresholdBpm,
+            alertsEnabled,
+            alertPhaseMode,
+        )
     }
 
     fun hasHeartRatePermissions(): Boolean = HeartRateController.hasBluetoothPermissions(getApplication())

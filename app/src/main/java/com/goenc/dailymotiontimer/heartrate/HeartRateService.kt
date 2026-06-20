@@ -20,6 +20,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.goenc.dailymotiontimer.MainActivity
 import com.goenc.dailymotiontimer.R
+import com.goenc.dailymotiontimer.TimerUiState
 import com.goenc.dailymotiontimer.WalkingTimerStateStore
 import java.util.Locale
 
@@ -186,7 +187,7 @@ class HeartRateService : Service(), TextToSpeech.OnInitListener {
     }
 
     private fun speak(message: String) {
-        if (!isTimerRunning()) {
+        if (!shouldAnnounceForCurrentTimerState()) {
             pendingSpeech = null
             textToSpeech?.stop()
             return
@@ -198,9 +199,17 @@ class HeartRateService : Service(), TextToSpeech.OnInitListener {
         textToSpeech?.speak(message, TextToSpeech.QUEUE_FLUSH, null, "heart_rate_alert")
     }
 
-    private fun isTimerRunning(): Boolean {
-        val persistedState = WalkingTimerStateStore.load(this) ?: return false
-        return persistedState.toUiState(SystemClock.elapsedRealtime()).isRunning
+    private fun shouldAnnounceForCurrentTimerState(): Boolean {
+        val timerState = currentTimerState() ?: return false
+        if (!timerState.isRunning) {
+            return false
+        }
+        return preferences.loadSettings().alertPhaseMode.shouldAnnounce(timerState.currentPhase)
+    }
+
+    private fun currentTimerState(): TimerUiState? {
+        val persistedState = WalkingTimerStateStore.load(this) ?: return null
+        return persistedState.toUiState(SystemClock.elapsedRealtime())
     }
 
     private fun hasConnectPermission(): Boolean = Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||

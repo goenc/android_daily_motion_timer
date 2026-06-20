@@ -70,10 +70,24 @@ fun HeartRateSettingsSection(
     onConnectDevice: (String) -> Unit,
     onDisconnect: () -> Unit,
     onForgetDevice: () -> Unit,
-    onSettingsChange: (age: Int, alertsEnabled: Boolean) -> Unit,
+    onSettingsChange: (
+        targetLowerBpm: Int,
+        targetUpperBpm: Int,
+        dangerThresholdBpm: Int,
+        alertsEnabled: Boolean,
+        alertPhaseMode: HeartRateAlertPhaseMode,
+    ) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var ageValue by remember(state.settings.age) { mutableFloatStateOf(state.settings.age.toFloat()) }
+    var targetLowerValue by remember(state.settings.targetLowerBpm) {
+        mutableFloatStateOf(state.settings.targetLowerBpm.toFloat())
+    }
+    var targetUpperValue by remember(state.settings.targetUpperBpm) {
+        mutableFloatStateOf(state.settings.targetUpperBpm.toFloat())
+    }
+    var dangerThresholdValue by remember(state.settings.dangerThresholdBpm) {
+        mutableFloatStateOf(state.settings.dangerThresholdBpm.toFloat())
+    }
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -134,19 +148,92 @@ fun HeartRateSettingsSection(
                 }
             }
         }
+        val normalizedTargetLower = targetLowerValue.roundToInt().coerceIn(
+            MIN_HEART_RATE_THRESHOLD_BPM,
+            MAX_HEART_RATE_THRESHOLD_BPM - 2,
+        )
+        val normalizedTargetUpper = targetUpperValue.roundToInt().coerceIn(
+            normalizedTargetLower + 1,
+            MAX_HEART_RATE_THRESHOLD_BPM - 1,
+        )
+        val normalizedDangerThreshold = dangerThresholdValue.roundToInt().coerceIn(
+            normalizedTargetUpper + 1,
+            MAX_HEART_RATE_THRESHOLD_BPM,
+        )
         Text(
-            text = stringResource(R.string.heart_rate_age, ageValue.roundToInt()),
+            text = stringResource(R.string.heart_rate_target_lower, normalizedTargetLower),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
         )
         Slider(
-            value = ageValue,
-            onValueChange = { ageValue = it },
-            onValueChangeFinished = {
-                onSettingsChange(ageValue.roundToInt(), state.settings.alertsEnabled)
+            value = normalizedTargetLower.toFloat(),
+            onValueChange = { value ->
+                targetLowerValue = value.coerceIn(
+                    MIN_HEART_RATE_THRESHOLD_BPM.toFloat(),
+                    (normalizedTargetUpper - 1).toFloat(),
+                )
             },
-            valueRange = 1f..120f,
-            steps = 118,
+            onValueChangeFinished = {
+                onSettingsChange(
+                    normalizedTargetLower,
+                    normalizedTargetUpper,
+                    normalizedDangerThreshold,
+                    state.settings.alertsEnabled,
+                    state.settings.alertPhaseMode,
+                )
+            },
+            valueRange = MIN_HEART_RATE_THRESHOLD_BPM.toFloat()..(MAX_HEART_RATE_THRESHOLD_BPM - 2).toFloat(),
+            steps = MAX_HEART_RATE_THRESHOLD_BPM - MIN_HEART_RATE_THRESHOLD_BPM - 3,
+        )
+        Text(
+            text = stringResource(R.string.heart_rate_target_upper, normalizedTargetUpper),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+        )
+        Slider(
+            value = normalizedTargetUpper.toFloat(),
+            onValueChange = { value ->
+                targetUpperValue = value.coerceIn(
+                    (normalizedTargetLower + 1).toFloat(),
+                    (normalizedDangerThreshold - 1).toFloat(),
+                )
+            },
+            onValueChangeFinished = {
+                onSettingsChange(
+                    normalizedTargetLower,
+                    normalizedTargetUpper,
+                    normalizedDangerThreshold,
+                    state.settings.alertsEnabled,
+                    state.settings.alertPhaseMode,
+                )
+            },
+            valueRange = (MIN_HEART_RATE_THRESHOLD_BPM + 1).toFloat()..(MAX_HEART_RATE_THRESHOLD_BPM - 1).toFloat(),
+            steps = MAX_HEART_RATE_THRESHOLD_BPM - MIN_HEART_RATE_THRESHOLD_BPM - 3,
+        )
+        Text(
+            text = stringResource(R.string.heart_rate_danger_threshold, normalizedDangerThreshold),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+        )
+        Slider(
+            value = normalizedDangerThreshold.toFloat(),
+            onValueChange = { value ->
+                dangerThresholdValue = value.coerceIn(
+                    (normalizedTargetUpper + 1).toFloat(),
+                    MAX_HEART_RATE_THRESHOLD_BPM.toFloat(),
+                )
+            },
+            onValueChangeFinished = {
+                onSettingsChange(
+                    normalizedTargetLower,
+                    normalizedTargetUpper,
+                    normalizedDangerThreshold,
+                    state.settings.alertsEnabled,
+                    state.settings.alertPhaseMode,
+                )
+            },
+            valueRange = (MIN_HEART_RATE_THRESHOLD_BPM + 2).toFloat()..MAX_HEART_RATE_THRESHOLD_BPM.toFloat(),
+            steps = MAX_HEART_RATE_THRESHOLD_BPM - MIN_HEART_RATE_THRESHOLD_BPM - 3,
         )
         Text(
             text = stringResource(
@@ -168,8 +255,47 @@ fun HeartRateSettingsSection(
             )
             Switch(
                 checked = state.settings.alertsEnabled,
-                onCheckedChange = { enabled -> onSettingsChange(ageValue.roundToInt(), enabled) },
+                onCheckedChange = { enabled ->
+                    onSettingsChange(
+                        normalizedTargetLower,
+                        normalizedTargetUpper,
+                        normalizedDangerThreshold,
+                        enabled,
+                        state.settings.alertPhaseMode,
+                    )
+                },
             )
+        }
+        Text(
+            text = stringResource(R.string.heart_rate_alert_phase_mode),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            HeartRateAlertPhaseMode.entries.forEach { mode ->
+                val isSelected = state.settings.alertPhaseMode == mode
+                val onClick = {
+                    onSettingsChange(
+                        normalizedTargetLower,
+                        normalizedTargetUpper,
+                        normalizedDangerThreshold,
+                        state.settings.alertsEnabled,
+                        mode,
+                    )
+                }
+                if (isSelected) {
+                    Button(onClick = onClick, modifier = Modifier.weight(1f)) {
+                        Text(mode.label)
+                    }
+                } else {
+                    OutlinedButton(onClick = onClick, modifier = Modifier.weight(1f)) {
+                        Text(mode.label)
+                    }
+                }
+            }
         }
         state.errorMessage?.let {
             Text(text = it, color = MaterialTheme.colorScheme.error)

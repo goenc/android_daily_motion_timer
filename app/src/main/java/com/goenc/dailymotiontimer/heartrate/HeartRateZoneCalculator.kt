@@ -1,18 +1,25 @@
 package com.goenc.dailymotiontimer.heartrate
 
-import kotlin.math.roundToInt
-
 object HeartRateZoneCalculator {
     fun buildRule(settings: HeartRateSettings): HeartRateRule {
-        val estimatedMax = (208f - 0.7f * settings.age).roundToInt()
-        val targetLower = (estimatedMax * 0.55f).roundToInt()
-        val targetUpper = (estimatedMax * 0.70f).roundToInt()
+        val targetLower = settings.targetLowerBpm.coerceIn(
+            MIN_HEART_RATE_THRESHOLD_BPM,
+            MAX_HEART_RATE_THRESHOLD_BPM - 2,
+        )
+        val targetUpper = settings.targetUpperBpm.coerceIn(
+            targetLower + 1,
+            MAX_HEART_RATE_THRESHOLD_BPM - 1,
+        )
+        val dangerThreshold = settings.dangerThresholdBpm.coerceIn(
+            targetUpper + 1,
+            MAX_HEART_RATE_THRESHOLD_BPM,
+        )
+        val tooHighThreshold = (targetUpper + ((dangerThreshold - targetUpper) / 2)).coerceAtLeast(targetUpper + 1)
         return HeartRateRule(
-            estimatedMaxHeartRate = estimatedMax,
             targetLower = targetLower,
             targetUpper = targetUpper,
-            tooHighThreshold = (estimatedMax * 0.75f).roundToInt(),
-            dangerThreshold = (estimatedMax * 0.85f).roundToInt(),
+            tooHighThreshold = tooHighThreshold,
+            dangerThreshold = dangerThreshold,
         )
     }
 

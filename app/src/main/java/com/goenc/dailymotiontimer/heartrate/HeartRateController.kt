@@ -98,10 +98,32 @@ object HeartRateController {
         context.startService(HeartRateService.createIntent(context, HeartRateService.ACTION_FORGET_DEVICE))
     }
 
-    fun updateSettings(context: Context, age: Int, alertsEnabled: Boolean) {
+    fun updateSettings(
+        context: Context,
+        targetLowerBpm: Int,
+        targetUpperBpm: Int,
+        dangerThresholdBpm: Int,
+        alertsEnabled: Boolean,
+        alertPhaseMode: HeartRateAlertPhaseMode,
+    ) {
+        val normalizedTargetLower = targetLowerBpm.coerceIn(
+            MIN_HEART_RATE_THRESHOLD_BPM,
+            MAX_HEART_RATE_THRESHOLD_BPM - 2,
+        )
+        val normalizedTargetUpper = targetUpperBpm.coerceIn(
+            normalizedTargetLower + 1,
+            MAX_HEART_RATE_THRESHOLD_BPM - 1,
+        )
+        val normalizedDangerThreshold = dangerThresholdBpm.coerceIn(
+            normalizedTargetUpper + 1,
+            MAX_HEART_RATE_THRESHOLD_BPM,
+        )
         val settings = _uiState.value.settings.copy(
-            age = age.coerceIn(1, 120),
+            targetLowerBpm = normalizedTargetLower,
+            targetUpperBpm = normalizedTargetUpper,
+            dangerThresholdBpm = normalizedDangerThreshold,
             alertsEnabled = alertsEnabled,
+            alertPhaseMode = alertPhaseMode,
         )
         HeartRatePreferences(context).saveSettings(settings)
         _uiState.value = _uiState.value.copy(

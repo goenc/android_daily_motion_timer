@@ -60,6 +60,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.goenc.dailymotiontimer.heartrate.HeartRateSettingsSection
 import com.goenc.dailymotiontimer.heartrate.HeartRateStatus
+import com.goenc.dailymotiontimer.heartrate.HeartRateAlertPhaseMode
 import com.goenc.dailymotiontimer.heartrate.HeartRateUiState
 import com.goenc.dailymotiontimer.ui.theme.WorkoutFlowTimerTheme
 import kotlinx.coroutines.delay
@@ -364,7 +365,13 @@ private fun SettingsScreen(
     onConnectHeartRateDevice: (String) -> Unit,
     onDisconnectHeartRateDevice: () -> Unit,
     onForgetHeartRateDevice: () -> Unit,
-    onHeartRateSettingsChange: (Int, Boolean) -> Unit,
+    onHeartRateSettingsChange: (
+        targetLowerBpm: Int,
+        targetUpperBpm: Int,
+        dangerThresholdBpm: Int,
+        alertsEnabled: Boolean,
+        alertPhaseMode: HeartRateAlertPhaseMode,
+    ) -> Unit,
     onBackClick: () -> Unit,
 ) {
     var selectedTab by rememberSaveable { mutableStateOf(SettingsTab.HeartRate) }

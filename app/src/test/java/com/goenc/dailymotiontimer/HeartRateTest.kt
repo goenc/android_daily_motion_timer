@@ -11,19 +11,28 @@ import org.junit.Test
 
 class HeartRateTest {
     @Test
-    fun walkRuleMatchesReferenceDefaults() {
-        val rule = HeartRateZoneCalculator.buildRule(HeartRateSettings(age = 45))
+    fun walkRuleMatchesConfiguredThresholds() {
+        val rule = HeartRateZoneCalculator.buildRule(
+            HeartRateSettings(
+                targetLowerBpm = 97,
+                targetUpperBpm = 124,
+                dangerThresholdBpm = 150,
+            ),
+        )
 
-        assertEquals(177, rule.estimatedMaxHeartRate)
         assertEquals(97, rule.targetLower)
         assertEquals(124, rule.targetUpper)
-        assertEquals(133, rule.tooHighThreshold)
+        assertEquals(137, rule.tooHighThreshold)
         assertEquals(150, rule.dangerThreshold)
     }
 
     @Test
     fun targetZoneUsesHysteresisBeforeChangingToHigh() {
-        val settings = HeartRateSettings(age = 45)
+        val settings = HeartRateSettings(
+            targetLowerBpm = 97,
+            targetUpperBpm = 124,
+            dangerThresholdBpm = 150,
+        )
 
         assertEquals(
             HeartRateZone.TARGET,
@@ -46,7 +55,12 @@ class HeartRateTest {
     fun sustainedOutOfRangeHeartRateTriggersSpeechMessage() {
         val alerts = mutableListOf<String>()
         val engine = HeartRateAlertEngine(
-            initialSettings = HeartRateSettings(age = 45, confirmSeconds = 10),
+            initialSettings = HeartRateSettings(
+                targetLowerBpm = 97,
+                targetUpperBpm = 124,
+                dangerThresholdBpm = 150,
+                confirmSeconds = 10,
+            ),
             onSnapshot = { _, _, _ -> },
             onAlert = alerts::add,
         )

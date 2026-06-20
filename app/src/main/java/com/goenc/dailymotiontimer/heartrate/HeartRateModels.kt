@@ -1,5 +1,7 @@
 package com.goenc.dailymotiontimer.heartrate
 
+import com.goenc.dailymotiontimer.WalkingPhase
+
 enum class HeartRateConnectionState(val label: String) {
     DISCONNECTED("未接続"),
     SCANNING("検索中"),
@@ -16,9 +18,24 @@ enum class HeartRateZone(val label: String) {
     DANGER("危険"),
 }
 
+enum class HeartRateAlertPhaseMode(val label: String) {
+    FastOnly("早く歩く"),
+    SlowOnly("ゆっくり歩く"),
+    Both("両方");
+
+    fun shouldAnnounce(phase: WalkingPhase): Boolean = when (this) {
+        FastOnly -> phase == WalkingPhase.Fast
+        SlowOnly -> phase == WalkingPhase.Slow
+        Both -> true
+    }
+}
+
 data class HeartRateSettings(
-    val age: Int = 45,
+    val targetLowerBpm: Int = 97,
+    val targetUpperBpm: Int = 124,
+    val dangerThresholdBpm: Int = 150,
     val alertsEnabled: Boolean = true,
+    val alertPhaseMode: HeartRateAlertPhaseMode = HeartRateAlertPhaseMode.FastOnly,
     val averageWindowSeconds: Int = 5,
     val confirmSeconds: Int = 10,
     val normalCooldownSeconds: Int = 30,
@@ -27,7 +44,6 @@ data class HeartRateSettings(
 )
 
 data class HeartRateRule(
-    val estimatedMaxHeartRate: Int,
     val targetLower: Int,
     val targetUpper: Int,
     val tooHighThreshold: Int,
@@ -52,3 +68,6 @@ data class HeartRateUiState(
     val settings: HeartRateSettings = HeartRateSettings(),
     val errorMessage: String? = null,
 )
+
+internal const val MIN_HEART_RATE_THRESHOLD_BPM = 40
+internal const val MAX_HEART_RATE_THRESHOLD_BPM = 220
