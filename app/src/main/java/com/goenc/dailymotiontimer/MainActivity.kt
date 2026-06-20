@@ -148,9 +148,7 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         viewModel.setAppVisible(true)
-        if (viewModel.uiState.value.isRunning) {
-            viewModel.connectSavedHeartRateDevice()
-        }
+        viewModel.connectSavedHeartRateDevice()
     }
 
     override fun onResume() {
