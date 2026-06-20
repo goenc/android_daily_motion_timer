@@ -11,6 +11,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
@@ -38,6 +39,7 @@ class HeartRateService : Service(), TextToSpeech.OnInitListener {
     private var averageHeartRate: Int? = null
     private var zone: HeartRateZone? = null
     private var rule = HeartRateZoneCalculator.buildRule(HeartRateSettings())
+    private var alertVolume = DEFAULT_HEART_RATE_ALERT_VOLUME
     private val reconnectRunnable = Runnable(::connectSavedDevice)
 
     override fun onCreate() {
@@ -45,6 +47,7 @@ class HeartRateService : Service(), TextToSpeech.OnInitListener {
         preferences = HeartRatePreferences(this)
         val settings = preferences.loadSettings()
         rule = HeartRateZoneCalculator.buildRule(settings)
+        alertVolume = settings.alertVolume
         textToSpeech = TextToSpeech(applicationContext, this)
         alertEngine = HeartRateAlertEngine(
             initialSettings = settings,
@@ -65,7 +68,11 @@ class HeartRateService : Service(), TextToSpeech.OnInitListener {
         when (intent?.action) {
             ACTION_DISCONNECT -> disconnectAndStop(clearDevice = false)
             ACTION_FORGET_DEVICE -> disconnectAndStop(clearDevice = true)
-            ACTION_UPDATE_SETTINGS -> alertEngine.updateSettings(preferences.loadSettings())
+            ACTION_UPDATE_SETTINGS -> {
+                val settings = preferences.loadSettings()
+                alertVolume = settings.alertVolume
+                alertEngine.updateSettings(settings)
+            }
             else -> {
                 startForeground(NOTIFICATION_ID, buildNotification("接続を準備中"))
                 reconnectEnabled = true
@@ -200,7 +207,13 @@ class HeartRateService : Service(), TextToSpeech.OnInitListener {
             pendingSpeech = message
             return
         }
-        textToSpeech?.speak(message, TextToSpeech.QUEUE_FLUSH, null, "heart_rate_alert")
+        val params = Bundle().apply {
+            putFloat(
+                TextToSpeech.Engine.KEY_PARAM_VOLUME,
+                heartRateAlertVolumeToSpeechVolume(alertVolume),
+            )
+        }
+        textToSpeech?.speak(message, TextToSpeech.QUEUE_FLUSH, params, "heart_rate_alert")
     }
 
     private fun shouldAnnounceForCurrentTimerState(): Boolean {

@@ -1,6 +1,7 @@
 package com.goenc.dailymotiontimer.heartrate
 
 import com.goenc.dailymotiontimer.WalkingPhase
+import kotlin.math.roundToInt
 
 enum class HeartRateConnectionState(val label: String) {
     DISCONNECTED("未接続"),
@@ -35,6 +36,7 @@ data class HeartRateSettings(
     val targetUpperBpm: Int = 124,
     val dangerThresholdBpm: Int = 150,
     val alertsEnabled: Boolean = true,
+    val alertVolume: Float = DEFAULT_HEART_RATE_ALERT_VOLUME,
     val alertPhaseMode: HeartRateAlertPhaseMode = HeartRateAlertPhaseMode.FastOnly,
     val averageWindowSeconds: Int = 5,
     val confirmSeconds: Int = 10,
@@ -73,3 +75,25 @@ internal const val MIN_HEART_RATE_THRESHOLD_BPM = 40
 internal const val MAX_HEART_RATE_THRESHOLD_BPM = 220
 internal const val MIN_CONFIRM_SECONDS = 1
 internal const val MAX_CONFIRM_SECONDS = 30
+internal const val DEFAULT_HEART_RATE_ALERT_VOLUME = 1.0f
+internal const val MAX_HEART_RATE_ALERT_VOLUME = 2.0f
+
+internal fun normalizeHeartRateAlertVolume(volume: Float): Float {
+    return if (volume.isNaN() || volume.isInfinite()) {
+        DEFAULT_HEART_RATE_ALERT_VOLUME
+    } else {
+        volume.coerceIn(0.0f, MAX_HEART_RATE_ALERT_VOLUME)
+    }
+}
+
+internal fun heartRateAlertVolumeToDisplayPercent(volume: Float): Int {
+    return (normalizeHeartRateAlertVolume(volume) * 100f).roundToInt().coerceIn(0, 200)
+}
+
+internal fun heartRateAlertVolumeFromDisplayPercent(percent: Int): Float {
+    return normalizeHeartRateAlertVolume(percent.coerceIn(0, 200) / 100f)
+}
+
+internal fun heartRateAlertVolumeToSpeechVolume(volume: Float): Float {
+    return normalizeHeartRateAlertVolume(volume).coerceAtMost(1.0f)
+}

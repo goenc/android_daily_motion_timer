@@ -115,6 +115,10 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
+    fun updateHeartRateAlertVolume(volume: Float) {
+        HeartRateController.updateAlertVolume(getApplication(), volume)
+    }
+
     fun hasHeartRatePermissions(): Boolean = HeartRateController.hasBluetoothPermissions(getApplication())
 
     fun heartRatePermissions(): Array<String> = HeartRateController.requiredPermissions()

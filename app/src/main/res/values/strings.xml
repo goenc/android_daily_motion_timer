@@ -49,6 +49,7 @@
     <string name="heart_rate_danger_threshold">危険しきい値: %1$d bpm</string>
     <string name="heart_rate_target_range">目標 %1$d〜%2$d bpm / 危険 %3$d bpm以上</string>
     <string name="heart_rate_voice_alert">範囲外の音声警告</string>
+    <string name="heart_rate_alert_volume_label">警告音量</string>
     <string name="heart_rate_alert_confirm_seconds">警告判定秒数: %1$d秒</string>
     <string name="heart_rate_alert_phase_mode">読み上げタイミング</string>
 </resources>

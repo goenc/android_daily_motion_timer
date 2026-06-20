@@ -78,6 +78,7 @@ fun HeartRateSettingsSection(
         confirmSeconds: Int,
         alertPhaseMode: HeartRateAlertPhaseMode,
     ) -> Unit,
+    onAlertVolumeChange: (Float) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var targetLowerValue by remember(state.settings.targetLowerBpm) {
@@ -278,6 +279,10 @@ fun HeartRateSettingsSection(
                 },
             )
         }
+        HeartRateAlertVolumeSlider(
+            alertVolume = state.settings.alertVolume,
+            onVolumeChange = onAlertVolumeChange,
+        )
         Text(
             text = stringResource(R.string.heart_rate_alert_confirm_seconds, normalizedConfirmSeconds),
             style = MaterialTheme.typography.titleMedium,
@@ -339,5 +344,34 @@ fun HeartRateSettingsSection(
         state.errorMessage?.let {
             Text(text = it, color = MaterialTheme.colorScheme.error)
         }
+    }
+}
+
+@Composable
+private fun HeartRateAlertVolumeSlider(
+    alertVolume: Float,
+    onVolumeChange: (Float) -> Unit,
+) {
+    val volumePercent = heartRateAlertVolumeToDisplayPercent(alertVolume)
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = stringResource(
+                R.string.setting_summary,
+                stringResource(R.string.heart_rate_alert_volume_label),
+                stringResource(R.string.announcement_volume_value, volumePercent),
+            ),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+        )
+        Slider(
+            value = volumePercent.toFloat(),
+            onValueChange = { sliderValue ->
+                val clampedPercent = sliderValue.roundToInt().coerceIn(0, 200)
+                onVolumeChange(heartRateAlertVolumeFromDisplayPercent(clampedPercent))
+            },
+            valueRange = 0f..200f,
+            steps = 199,
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 }

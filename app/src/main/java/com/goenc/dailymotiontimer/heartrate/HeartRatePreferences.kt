@@ -53,6 +53,9 @@ class HeartRatePreferences(context: Context) {
             )?.let {
                 HeartRateAlertPhaseMode.entries.firstOrNull { mode -> mode.name == it }
             } ?: HeartRateSettings().alertPhaseMode,
+            alertVolume = normalizeHeartRateAlertVolume(
+                preferences.getFloat(KEY_ALERT_VOLUME, HeartRateSettings().alertVolume),
+            ),
         )
     }
 
@@ -64,6 +67,7 @@ class HeartRatePreferences(context: Context) {
             .putBoolean(KEY_ALERTS_ENABLED, settings.alertsEnabled)
             .putInt(KEY_CONFIRM_SECONDS, settings.confirmSeconds)
             .putString(KEY_ALERT_PHASE_MODE, settings.alertPhaseMode.name)
+            .putFloat(KEY_ALERT_VOLUME, normalizeHeartRateAlertVolume(settings.alertVolume))
             .apply()
     }
 
@@ -77,5 +81,6 @@ class HeartRatePreferences(context: Context) {
         const val KEY_ALERTS_ENABLED = "alerts_enabled"
         const val KEY_CONFIRM_SECONDS = "confirm_seconds"
         const val KEY_ALERT_PHASE_MODE = "alert_phase_mode"
+        const val KEY_ALERT_VOLUME = "alert_volume"
     }
 }

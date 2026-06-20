@@ -142,6 +142,21 @@ object HeartRateController {
         }
     }
 
+    fun updateAlertVolume(context: Context, volume: Float) {
+        initialize(context)
+        val settings = _uiState.value.settings.copy(
+            alertVolume = normalizeHeartRateAlertVolume(volume),
+        )
+        HeartRatePreferences(context).saveSettings(settings)
+        _uiState.value = _uiState.value.copy(settings = settings)
+        if (
+            _uiState.value.connectionState == HeartRateConnectionState.CONNECTED ||
+            _uiState.value.connectionState == HeartRateConnectionState.CONNECTING
+        ) {
+            context.startService(HeartRateService.createIntent(context, HeartRateService.ACTION_UPDATE_SETTINGS))
+        }
+    }
+
     fun reportPermissionDenied() {
         _uiState.value = _uiState.value.copy(
             connectionState = HeartRateConnectionState.ERROR,

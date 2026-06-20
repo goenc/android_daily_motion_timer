@@ -120,6 +120,7 @@ class MainActivity : ComponentActivity() {
                             onDisconnectHeartRateDevice = viewModel::disconnectHeartRateDevice,
                             onForgetHeartRateDevice = viewModel::forgetHeartRateDevice,
                             onHeartRateSettingsChange = viewModel::updateHeartRateSettings,
+                            onHeartRateAlertVolumeChange = viewModel::updateHeartRateAlertVolume,
                             onBackClick = {
                                 viewModel.stopHeartRateScan()
                                 isSettingsScreenVisible = false
@@ -373,6 +374,7 @@ private fun SettingsScreen(
         confirmSeconds: Int,
         alertPhaseMode: HeartRateAlertPhaseMode,
     ) -> Unit,
+    onHeartRateAlertVolumeChange: (Float) -> Unit,
     onBackClick: () -> Unit,
 ) {
     var selectedTab by rememberSaveable { mutableStateOf(SettingsTab.HeartRate) }
@@ -423,6 +425,7 @@ private fun SettingsScreen(
                     onDisconnect = onDisconnectHeartRateDevice,
                     onForgetDevice = onForgetHeartRateDevice,
                     onSettingsChange = onHeartRateSettingsChange,
+                    onAlertVolumeChange = onHeartRateAlertVolumeChange,
                 )
             }
 
