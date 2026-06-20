@@ -35,6 +35,8 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderColors
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -365,6 +367,7 @@ private fun SettingsScreen(
     onHeartRateSettingsChange: (Int, Boolean) -> Unit,
     onBackClick: () -> Unit,
 ) {
+    var selectedTab by rememberSaveable { mutableStateOf(SettingsTab.HeartRate) }
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -389,107 +392,131 @@ private fun SettingsScreen(
             }
         }
         Spacer(modifier = Modifier.height(24.dp))
-        HeartRateSettingsSection(
-            state = heartRateUiState,
-            onStartScan = onStartHeartRateScan,
-            onConnectDevice = onConnectHeartRateDevice,
-            onDisconnect = onDisconnectHeartRateDevice,
-            onForgetDevice = onForgetHeartRateDevice,
-            onSettingsChange = onHeartRateSettingsChange,
-        )
-        Spacer(modifier = Modifier.height(32.dp))
-        PhaseDurationSlider(
-            title = stringResource(R.string.fast_phase_duration_label),
-            selectedDurationLabel = uiState.formattedFastPhaseDuration,
-            selectedDurationSeconds = uiState.fastPhaseDurationSeconds,
-            enabled = !uiState.isActive,
-            onDurationChange = onFastPhaseDurationChange,
-        )
-        Spacer(modifier = Modifier.height(20.dp))
-        PhaseDurationSlider(
-            title = stringResource(R.string.slow_phase_duration_label),
-            selectedDurationLabel = uiState.formattedSlowPhaseDuration,
-            selectedDurationSeconds = uiState.slowPhaseDurationSeconds,
-            enabled = !uiState.isActive,
-            onDurationChange = onSlowPhaseDurationChange,
-        )
-        Spacer(modifier = Modifier.height(20.dp))
-        AnnouncementVolumeSlider(
-            title = stringResource(R.string.announcement_volume_label),
-            announcementVolume = uiState.announcementVolume,
-            onVolumeChange = onAnnouncementVolumeChange,
-        )
-        Spacer(modifier = Modifier.height(20.dp))
-        BeepVolumeSlider(
-            title = stringResource(R.string.beep_volume_label),
-            beepVolume = uiState.beepVolume,
-            onVolumeChange = onBeepVolumeChange,
-        )
-        Spacer(modifier = Modifier.height(20.dp))
-        BeepPitchSelector(
-            title = stringResource(R.string.fast_phase_beep_pitch_label),
-            selectedPitchLabel = uiState.formattedFastPhaseBeepPitch,
-            selectedPitchPreset = uiState.fastPhaseBeepPitchPreset,
-            enabled = !uiState.isActive,
-            textColor = Color.Unspecified,
-            onPitchChange = onFastPhaseBeepPitchChange,
-        )
-        Spacer(modifier = Modifier.height(20.dp))
-        BeepPitchSelector(
-            title = stringResource(R.string.slow_phase_beep_pitch_label),
-            selectedPitchLabel = uiState.formattedSlowPhaseBeepPitch,
-            selectedPitchPreset = uiState.slowPhaseBeepPitchPreset,
-            enabled = !uiState.isActive,
-            textColor = Color.Unspecified,
-            onPitchChange = onSlowPhaseBeepPitchChange,
-        )
-        Spacer(modifier = Modifier.height(20.dp))
-        BeepIntervalSlider(
-            title = stringResource(R.string.fast_phase_beep_interval_label),
-            selectedIntervalLabel = uiState.formattedFastPhaseBeepInterval,
-            selectedIntervalSeconds = uiState.fastPhaseBeepIntervalSeconds,
-            enabled = !uiState.isActive,
-            textColor = Color.Unspecified,
-            onIntervalChange = onFastPhaseBeepIntervalChange,
-        )
-        Spacer(modifier = Modifier.height(20.dp))
-        BeepIntervalSlider(
-            title = stringResource(R.string.slow_phase_beep_interval_label),
-            selectedIntervalLabel = uiState.formattedSlowPhaseBeepInterval,
-            selectedIntervalSeconds = uiState.slowPhaseBeepIntervalSeconds,
-            enabled = !uiState.isActive,
-            textColor = Color.Unspecified,
-            onIntervalChange = onSlowPhaseBeepIntervalChange,
-        )
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 20.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
+        TabRow(
+            selectedTabIndex = selectedTab.ordinal,
+            modifier = Modifier.fillMaxWidth(),
         ) {
-            Text(
-                text = stringResource(
-                    R.string.setting_summary,
-                    stringResource(R.string.vibration_enabled_label),
-                    stringResource(
-                        if (uiState.isVibrationEnabled) {
-                            R.string.setting_on
-                        } else {
-                            R.string.setting_off
-                        },
-                    ),
-                ),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-            )
-            Switch(
-                checked = uiState.isVibrationEnabled,
-                onCheckedChange = onVibrationEnabledChange,
-                enabled = !uiState.isActive,
-            )
+            SettingsTab.entries.forEach { tab ->
+                Tab(
+                    selected = selectedTab == tab,
+                    onClick = { selectedTab = tab },
+                    text = { Text(text = stringResource(tab.titleResId)) },
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(24.dp))
+        when (selectedTab) {
+            SettingsTab.HeartRate -> {
+                HeartRateSettingsSection(
+                    state = heartRateUiState,
+                    onStartScan = onStartHeartRateScan,
+                    onConnectDevice = onConnectHeartRateDevice,
+                    onDisconnect = onDisconnectHeartRateDevice,
+                    onForgetDevice = onForgetHeartRateDevice,
+                    onSettingsChange = onHeartRateSettingsChange,
+                )
+            }
+
+            SettingsTab.Timer -> {
+                PhaseDurationSlider(
+                    title = stringResource(R.string.fast_phase_duration_label),
+                    selectedDurationLabel = uiState.formattedFastPhaseDuration,
+                    selectedDurationSeconds = uiState.fastPhaseDurationSeconds,
+                    enabled = !uiState.isActive,
+                    onDurationChange = onFastPhaseDurationChange,
+                )
+                Spacer(modifier = Modifier.height(20.dp))
+                PhaseDurationSlider(
+                    title = stringResource(R.string.slow_phase_duration_label),
+                    selectedDurationLabel = uiState.formattedSlowPhaseDuration,
+                    selectedDurationSeconds = uiState.slowPhaseDurationSeconds,
+                    enabled = !uiState.isActive,
+                    onDurationChange = onSlowPhaseDurationChange,
+                )
+                Spacer(modifier = Modifier.height(20.dp))
+                AnnouncementVolumeSlider(
+                    title = stringResource(R.string.announcement_volume_label),
+                    announcementVolume = uiState.announcementVolume,
+                    onVolumeChange = onAnnouncementVolumeChange,
+                )
+                Spacer(modifier = Modifier.height(20.dp))
+                BeepVolumeSlider(
+                    title = stringResource(R.string.beep_volume_label),
+                    beepVolume = uiState.beepVolume,
+                    onVolumeChange = onBeepVolumeChange,
+                )
+                Spacer(modifier = Modifier.height(20.dp))
+                BeepPitchSelector(
+                    title = stringResource(R.string.fast_phase_beep_pitch_label),
+                    selectedPitchLabel = uiState.formattedFastPhaseBeepPitch,
+                    selectedPitchPreset = uiState.fastPhaseBeepPitchPreset,
+                    enabled = !uiState.isActive,
+                    textColor = Color.Unspecified,
+                    onPitchChange = onFastPhaseBeepPitchChange,
+                )
+                Spacer(modifier = Modifier.height(20.dp))
+                BeepPitchSelector(
+                    title = stringResource(R.string.slow_phase_beep_pitch_label),
+                    selectedPitchLabel = uiState.formattedSlowPhaseBeepPitch,
+                    selectedPitchPreset = uiState.slowPhaseBeepPitchPreset,
+                    enabled = !uiState.isActive,
+                    textColor = Color.Unspecified,
+                    onPitchChange = onSlowPhaseBeepPitchChange,
+                )
+                Spacer(modifier = Modifier.height(20.dp))
+                BeepIntervalSlider(
+                    title = stringResource(R.string.fast_phase_beep_interval_label),
+                    selectedIntervalLabel = uiState.formattedFastPhaseBeepInterval,
+                    selectedIntervalSeconds = uiState.fastPhaseBeepIntervalSeconds,
+                    enabled = !uiState.isActive,
+                    textColor = Color.Unspecified,
+                    onIntervalChange = onFastPhaseBeepIntervalChange,
+                )
+                Spacer(modifier = Modifier.height(20.dp))
+                BeepIntervalSlider(
+                    title = stringResource(R.string.slow_phase_beep_interval_label),
+                    selectedIntervalLabel = uiState.formattedSlowPhaseBeepInterval,
+                    selectedIntervalSeconds = uiState.slowPhaseBeepIntervalSeconds,
+                    enabled = !uiState.isActive,
+                    textColor = Color.Unspecified,
+                    onIntervalChange = onSlowPhaseBeepIntervalChange,
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 20.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = stringResource(
+                            R.string.setting_summary,
+                            stringResource(R.string.vibration_enabled_label),
+                            stringResource(
+                                if (uiState.isVibrationEnabled) {
+                                    R.string.setting_on
+                                } else {
+                                    R.string.setting_off
+                                },
+                            ),
+                        ),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Switch(
+                        checked = uiState.isVibrationEnabled,
+                        onCheckedChange = onVibrationEnabledChange,
+                        enabled = !uiState.isActive,
+                    )
+                }
+            }
         }
     }
+}
+
+private enum class SettingsTab(val titleResId: Int) {
+    HeartRate(R.string.heart_rate_settings_title),
+    Timer(R.string.settings_timer_tab),
 }
 
 @Composable
