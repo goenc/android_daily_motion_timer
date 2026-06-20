@@ -70,4 +70,28 @@ class HeartRateTest {
 
         assertEquals(listOf("上がりすぎです。ペースを落としてください"), alerts)
     }
+
+    @Test
+    fun suppressedPhaseDoesNotCarryOverConfirmSeconds() {
+        val alerts = mutableListOf<String>()
+        val engine = HeartRateAlertEngine(
+            initialSettings = HeartRateSettings(
+                targetLowerBpm = 97,
+                targetUpperBpm = 124,
+                dangerThresholdBpm = 150,
+                confirmSeconds = 30,
+            ),
+            onSnapshot = { _, _, _ -> },
+            onAlert = alerts::add,
+        )
+
+        engine.onHeartRateSample(80, timestampMs = 0L, alertsSuppressed = true)
+        engine.onHeartRateSample(80, timestampMs = 15_000L, alertsSuppressed = true)
+        engine.onHeartRateSample(80, timestampMs = 30_000L, alertsSuppressed = false)
+        engine.onHeartRateSample(80, timestampMs = 45_000L, alertsSuppressed = false)
+        assertEquals(emptyList<String>(), alerts)
+
+        engine.onHeartRateSample(80, timestampMs = 60_000L, alertsSuppressed = false)
+        assertEquals(listOf("心拍が低いです。少し上げてください"), alerts)
+    }
 }

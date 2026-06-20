@@ -102,7 +102,11 @@ class HeartRateService : Service(), TextToSpeech.OnInitListener {
             onStateChanged = ::handleClientState,
             onHeartRateChanged = { value ->
                 heartRate = value
-                alertEngine.onHeartRateSample(value, SystemClock.elapsedRealtime())
+                alertEngine.onHeartRateSample(
+                    heartRate = value,
+                    timestampMs = SystemClock.elapsedRealtime(),
+                    alertsSuppressed = !shouldAnnounceForCurrentTimerState(),
+                )
                 updateNotification(savedDevice)
             },
         ).also { it.connect(device) }

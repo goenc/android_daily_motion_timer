@@ -24,24 +24,37 @@ class HeartRateAlertEngine(
         reset()
     }
 
-    fun onHeartRateSample(heartRate: Int, timestampMs: Long) {
+    fun onHeartRateSample(
+        heartRate: Int,
+        timestampMs: Long,
+        alertsSuppressed: Boolean = false,
+    ) {
         samples.addLast(Sample(timestampMs, heartRate))
         val cutoff = timestampMs - settings.averageWindowSeconds * 1_000L
         while (samples.isNotEmpty() && samples.first().timestampMs < cutoff) samples.removeFirst()
         val average = samples.map { it.heartRate }.average().roundToInt()
         val evaluatedZone = HeartRateZoneCalculator.calculateZone(settings, average, currentZone)
         currentZone = evaluatedZone
+        if (alertsSuppressed) {
+            clearPendingAlertState()
+            onSnapshot(average, evaluatedZone, rule)
+            return
+        }
         confirmZone(evaluatedZone, average, timestampMs)
     }
 
     fun reset() {
         samples.clear()
         currentZone = null
+        clearPendingAlertState()
+        lastAlertAtMs = null
+        onSnapshot(null, null, rule)
+    }
+
+    private fun clearPendingAlertState() {
         pendingZone = null
         pendingSinceMs = null
         confirmedZone = null
-        lastAlertAtMs = null
-        onSnapshot(null, null, rule)
     }
 
     private fun confirmZone(zone: HeartRateZone, average: Int, timestampMs: Long) {
