@@ -381,12 +381,11 @@ private fun SettingsScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(horizontal = 24.dp)
-            .verticalScroll(rememberScrollState()),
+            .padding(horizontal = 24.dp),
         verticalArrangement = Arrangement.Top,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(12.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -401,7 +400,7 @@ private fun SettingsScreen(
                 Text(text = stringResource(R.string.settings_close))
             }
         }
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(12.dp))
         TabRow(
             selectedTabIndex = selectedTab.ordinal,
             modifier = Modifier.fillMaxWidth(),
@@ -414,10 +413,16 @@ private fun SettingsScreen(
                 )
             }
         }
-        Spacer(modifier = Modifier.height(24.dp))
-        when (selectedTab) {
-            SettingsTab.HeartRate -> {
-                HeartRateSettingsSection(
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
+        ) {
+            Spacer(modifier = Modifier.height(12.dp))
+            when (selectedTab) {
+                SettingsTab.HeartRate -> {
+                    HeartRateSettingsSection(
                     state = heartRateUiState,
                     onStartScan = onStartHeartRateScan,
                     onReconnectSavedDevice = onReconnectSavedDevice,
@@ -427,10 +432,10 @@ private fun SettingsScreen(
                     onSettingsChange = onHeartRateSettingsChange,
                     onAlertVolumeChange = onHeartRateAlertVolumeChange,
                 )
-            }
+                }
 
-            SettingsTab.Timer -> {
-                PhaseDurationSlider(
+                SettingsTab.Timer -> {
+                    PhaseDurationSlider(
                     title = stringResource(R.string.fast_phase_duration_label),
                     selectedDurationLabel = uiState.formattedFastPhaseDuration,
                     selectedDurationSeconds = uiState.fastPhaseDurationSeconds,
@@ -522,6 +527,8 @@ private fun SettingsScreen(
                     )
                 }
             }
+            }
+            Spacer(modifier = Modifier.height(24.dp))
         }
     }
 }
