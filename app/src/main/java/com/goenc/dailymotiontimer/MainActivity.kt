@@ -311,6 +311,7 @@ private fun TimerScreen(
         }
         HeartRateGraph(
             samples = heartRateUiState.heartRateHistory,
+            phaseSamples = heartRateUiState.phaseHistory,
             modifier = Modifier.padding(top = 12.dp),
         )
         Row(

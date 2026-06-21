@@ -7,6 +7,8 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.SystemClock
 import androidx.core.content.ContextCompat
+import com.goenc.dailymotiontimer.TimerUiState
+import com.goenc.dailymotiontimer.WalkingPhase
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -200,6 +202,19 @@ object HeartRateController {
         )
     }
 
+    internal fun syncTimerState(state: TimerUiState) {
+        val now = SystemClock.elapsedRealtime()
+        val phase = state.currentPhase.takeIf { state.isRunning }
+        val history = _uiState.value.phaseHistory.toMutableList()
+        if (history.lastOrNull()?.phase != phase) {
+            history += HeartRatePhaseSample(phase = phase, timestampMs = now)
+        } else if (history.isEmpty()) {
+            history += HeartRatePhaseSample(phase = phase, timestampMs = now)
+        }
+        trimPhaseHistory(history, cutoff = now - GRAPH_WINDOW_MS)
+        _uiState.value = _uiState.value.copy(phaseHistory = history)
+    }
+
     fun requiredPermissions(): Array<String> = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
     } else {
@@ -213,4 +228,16 @@ object HeartRateController {
     private const val GRAPH_WINDOW_MS = 10 * 60 * 1_000L
     private const val GRAPH_SAMPLE_INTERVAL_MS = 1_000L
     private const val MAX_GRAPH_SAMPLES = 600
+
+    private fun trimPhaseHistory(
+        history: MutableList<HeartRatePhaseSample>,
+        cutoff: Long,
+    ) {
+        while (history.size > 1 && history[1].timestampMs < cutoff) {
+            history.removeAt(0)
+        }
+        while (history.size > MAX_GRAPH_SAMPLES) {
+            history.removeAt(0)
+        }
+    }
 }

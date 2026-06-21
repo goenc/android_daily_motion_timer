@@ -3,6 +3,7 @@ package com.goenc.dailymotiontimer
 import android.content.Context
 import android.os.SystemClock
 import androidx.core.content.ContextCompat
+import com.goenc.dailymotiontimer.heartrate.HeartRateController
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -205,6 +206,7 @@ object WalkingTimerController {
 
     internal fun publishState(state: TimerUiState) {
         _uiState.value = state
+        HeartRateController.syncTimerState(state)
     }
 
     private fun updateIdlePhaseDurations(

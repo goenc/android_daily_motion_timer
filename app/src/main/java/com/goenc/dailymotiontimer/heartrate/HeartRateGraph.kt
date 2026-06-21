@@ -15,20 +15,25 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.goenc.dailymotiontimer.R
+import com.goenc.dailymotiontimer.WalkingPhase
 
 private const val GRAPH_MIN_BPM = 50
 private const val GRAPH_MAX_BPM = 150
 private const val GRAPH_WINDOW_MS = 10 * 60 * 1_000L
+private val FAST_PHASE_BACKGROUND = Color(0x55FFA726)
+private val SLOW_PHASE_BACKGROUND = Color(0x5538A169)
 
 @Composable
 fun HeartRateGraph(
     samples: List<HeartRateGraphSample>,
+    phaseSamples: List<HeartRatePhaseSample>,
     modifier: Modifier = Modifier,
 ) {
     val gridColor = MaterialTheme.colorScheme.outlineVariant
@@ -37,6 +42,16 @@ fun HeartRateGraph(
     val graphDescription = latestHeartRate?.let {
         stringResource(R.string.heart_rate_graph_description, it)
     } ?: stringResource(R.string.heart_rate_graph_waiting)
+    val latestGraphTimestamp = maxOf(
+        samples.lastOrNull()?.timestampMs ?: 0L,
+        phaseSamples.lastOrNull()?.timestampMs ?: 0L,
+    )
+    val windowStartTimestamp = (latestGraphTimestamp - GRAPH_WINDOW_MS).coerceAtLeast(0L)
+    val phaseSpans = buildPhaseSpans(
+        samples = phaseSamples,
+        windowStartTimestamp = windowStartTimestamp,
+        windowEndTimestamp = latestGraphTimestamp,
+    )
 
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -62,6 +77,16 @@ fun HeartRateGraph(
                     },
             ) {
                 Canvas(modifier = Modifier.fillMaxSize()) {
+                    phaseSpans.forEach { span ->
+                        drawRect(
+                            color = phaseBackgroundColor(span.phase),
+                            topLeft = Offset(size.width * span.startRatio, 0f),
+                            size = androidx.compose.ui.geometry.Size(
+                                width = size.width * (span.endRatio - span.startRatio),
+                                height = size.height,
+                            ),
+                        )
+                    }
                     repeat(5) { index ->
                         val y = size.height * index / 4f
                         drawLine(gridColor, Offset(0f, y), Offset(size.width, y), 1.dp.toPx())
@@ -122,3 +147,49 @@ private fun graphPoint(
         (GRAPH_MAX_BPM - GRAPH_MIN_BPM)
     return Offset(width * xRatio, height * (1f - yRatio))
 }
+
+private fun buildPhaseSpans(
+    samples: List<HeartRatePhaseSample>,
+    windowStartTimestamp: Long,
+    windowEndTimestamp: Long,
+): List<GraphPhaseSpan> {
+    if (samples.isEmpty() || windowEndTimestamp <= windowStartTimestamp) {
+        return emptyList()
+    }
+    val spans = mutableListOf<GraphPhaseSpan>()
+    var currentSample = samples.first()
+    for (index in 1 until samples.size) {
+        val nextSample = samples[index]
+        spans += currentSample.toSpan(windowStartTimestamp, windowEndTimestamp, nextSample.timestampMs)
+        currentSample = nextSample
+    }
+    spans += currentSample.toSpan(windowStartTimestamp, windowEndTimestamp, windowEndTimestamp)
+    return spans.filter { it.phase != null && it.endRatio > it.startRatio }
+}
+
+private fun HeartRatePhaseSample.toSpan(
+    windowStartTimestamp: Long,
+    windowEndTimestamp: Long,
+    nextTimestamp: Long,
+): GraphPhaseSpan {
+    val clampedStart = timestampMs.coerceIn(windowStartTimestamp, windowEndTimestamp)
+    val clampedEnd = nextTimestamp.coerceIn(windowStartTimestamp, windowEndTimestamp)
+    val duration = (windowEndTimestamp - windowStartTimestamp).coerceAtLeast(1L).toFloat()
+    return GraphPhaseSpan(
+        phase = phase,
+        startRatio = ((clampedStart - windowStartTimestamp) / duration).coerceIn(0f, 1f),
+        endRatio = ((clampedEnd - windowStartTimestamp) / duration).coerceIn(0f, 1f),
+    )
+}
+
+private fun phaseBackgroundColor(phase: WalkingPhase?): Color = when (phase) {
+    WalkingPhase.Fast -> FAST_PHASE_BACKGROUND
+    WalkingPhase.Slow -> SLOW_PHASE_BACKGROUND
+    null -> Color.Transparent
+}
+
+private data class GraphPhaseSpan(
+    val phase: WalkingPhase?,
+    val startRatio: Float,
+    val endRatio: Float,
+)
