@@ -23,18 +23,10 @@ object HeartRateController {
         if (initialized) return
         val preferences = HeartRatePreferences(context.applicationContext)
         val settings = preferences.loadSettings()
-        val now = SystemClock.elapsedRealtime()
         _uiState.value = _uiState.value.copy(
             savedDevice = preferences.loadDevice(),
             settings = settings,
             rule = HeartRateZoneCalculator.buildRule(settings),
-            heartRateHistory = listOf(
-                HeartRateGraphSample(
-                    heartRate = 0,
-                    timestampMs = now,
-                    hasMeasurement = false,
-                ),
-            ),
         )
         initialized = true
     }
@@ -176,26 +168,13 @@ object HeartRateController {
     }
 
     internal fun publishConnectionState(state: HeartRateConnectionState, message: String? = null) {
-        val now = SystemClock.elapsedRealtime()
-        val updatedState = _uiState.value.copy(
+        _uiState.value = _uiState.value.copy(
             connectionState = state,
             heartRate = if (state == HeartRateConnectionState.CONNECTED) _uiState.value.heartRate else 0,
             averageHeartRate = if (state == HeartRateConnectionState.CONNECTED) _uiState.value.averageHeartRate else null,
             zone = if (state == HeartRateConnectionState.CONNECTED) _uiState.value.zone else null,
             errorMessage = message,
         )
-        _uiState.value = if (state == HeartRateConnectionState.CONNECTED) {
-            updatedState
-        } else {
-            updatedState.copy(
-                heartRateHistory = appendGraphSample(
-                    history = updatedState.heartRateHistory,
-                    heartRate = 0,
-                    timestampMs = now,
-                    hasMeasurement = false,
-                ),
-            )
-        }
     }
 
     internal fun publishMeasurement(heartRate: Int, averageHeartRate: Int?, zone: HeartRateZone?, rule: HeartRateRule) {
@@ -225,20 +204,7 @@ object HeartRateController {
             history += HeartRatePhaseSample(phase = phase, timestampMs = now)
         }
         trimPhaseHistory(history, cutoff = now - GRAPH_WINDOW_MS)
-        val currentState = _uiState.value.copy(phaseHistory = history)
-        _uiState.value =
-            if (state.isRunning && currentState.connectionState != HeartRateConnectionState.CONNECTED) {
-                currentState.copy(
-                    heartRateHistory = appendGraphSample(
-                        history = currentState.heartRateHistory,
-                        heartRate = 0,
-                        timestampMs = now,
-                        hasMeasurement = false,
-                    ),
-                )
-            } else {
-                currentState
-            }
+        _uiState.value = _uiState.value.copy(phaseHistory = history)
     }
 
     fun requiredPermissions(): Array<String> = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
