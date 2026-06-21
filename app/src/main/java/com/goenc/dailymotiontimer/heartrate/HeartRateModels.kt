@@ -65,8 +65,14 @@ data class HeartRateGraphSample(
     val hasMeasurement: Boolean,
 )
 
+enum class HeartRateGraphBand {
+    IntervalFast,
+    IntervalSlow,
+    NormalActive,
+}
+
 data class HeartRatePhaseSample(
-    val phase: WalkingPhase?,
+    val band: HeartRateGraphBand?,
     val timestampMs: Long,
 )
 

@@ -61,6 +61,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
             )
         }
         _normalTimerUiState.value = updatedState.resolveAt(nowElapsedRealtime)
+        HeartRateController.syncNormalTimerState(_normalTimerUiState.value)
     }
 
     fun pauseNormalTimer() {
@@ -74,10 +75,12 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
             isPaused = true,
             pauseStartedElapsedRealtime = nowElapsedRealtime,
         )
+        HeartRateController.syncNormalTimerState(_normalTimerUiState.value)
     }
 
     fun stopNormalTimer() {
         _normalTimerUiState.value = NormalTimerUiState()
+        HeartRateController.syncNormalTimerState(_normalTimerUiState.value)
     }
 
     fun updateFastPhaseDurationSeconds(durationSeconds: Int) {

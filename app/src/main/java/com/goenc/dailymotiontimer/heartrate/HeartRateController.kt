@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.SystemClock
 import androidx.core.content.ContextCompat
+import com.goenc.dailymotiontimer.NormalTimerUiState
 import com.goenc.dailymotiontimer.TimerUiState
 import com.goenc.dailymotiontimer.WalkingPhase
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -223,18 +224,32 @@ object HeartRateController {
     }
 
     internal fun syncTimerState(state: TimerUiState) {
+        val band = when {
+            !state.isRunning -> null
+            state.currentPhase == WalkingPhase.Fast -> HeartRateGraphBand.IntervalFast
+            else -> HeartRateGraphBand.IntervalSlow
+        }
+        syncGraphBandHistory(HeartRateGraphMode.Interval, band)
+    }
+
+    internal fun syncNormalTimerState(state: NormalTimerUiState) {
+        val band = HeartRateGraphBand.NormalActive.takeIf { state.isRunning }
+        syncGraphBandHistory(HeartRateGraphMode.Normal, band)
+    }
+
+    private fun syncGraphBandHistory(mode: HeartRateGraphMode, band: HeartRateGraphBand?) {
         val now = SystemClock.elapsedRealtime()
-        val phase = state.currentPhase.takeIf { state.isRunning }
-        val intervalGraphState = _uiState.value.intervalGraphState
-        val history = intervalGraphState.phaseHistory.toMutableList()
-        if (history.lastOrNull()?.phase != phase) {
-            history += HeartRatePhaseSample(phase = phase, timestampMs = now)
+        val graphState = _uiState.value.graphStateFor(mode)
+        val history = graphState.phaseHistory.toMutableList()
+        if (history.lastOrNull()?.band != band) {
+            history += HeartRatePhaseSample(band = band, timestampMs = now)
         } else if (history.isEmpty()) {
-            history += HeartRatePhaseSample(phase = phase, timestampMs = now)
+            history += HeartRatePhaseSample(band = band, timestampMs = now)
         }
         trimPhaseHistory(history, cutoff = now - GRAPH_WINDOW_MS)
-        _uiState.value = _uiState.value.copy(
-            intervalGraphState = intervalGraphState.copy(phaseHistory = history),
+        _uiState.value = _uiState.value.withGraphState(
+            mode = mode,
+            graphState = graphState.copy(phaseHistory = history),
         )
     }
 
