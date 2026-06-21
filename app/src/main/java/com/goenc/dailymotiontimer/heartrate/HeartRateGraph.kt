@@ -27,6 +27,7 @@ import com.goenc.dailymotiontimer.WalkingPhase
 private const val GRAPH_MIN_BPM = 50
 private const val GRAPH_MAX_BPM = 150
 private const val GRAPH_WINDOW_MS = 10 * 60 * 1_000L
+internal const val MAX_CONNECTED_SAMPLE_GAP_MS = 5_000L
 private val FAST_PHASE_BACKGROUND = Color(0x55FFA726)
 private val SLOW_PHASE_BACKGROUND = Color(0x5538A169)
 
@@ -154,7 +155,7 @@ private fun graphPoint(
     return Offset(width * xRatio, height * (1f - yRatio))
 }
 
-private fun buildMeasuredSegments(samples: List<HeartRateGraphSample>): List<List<HeartRateGraphSample>> {
+internal fun buildMeasuredSegments(samples: List<HeartRateGraphSample>): List<List<HeartRateGraphSample>> {
     if (samples.isEmpty()) {
         return emptyList()
     }
@@ -162,6 +163,13 @@ private fun buildMeasuredSegments(samples: List<HeartRateGraphSample>): List<Lis
     var currentSegment = mutableListOf<HeartRateGraphSample>()
     samples.forEach { sample ->
         if (sample.hasMeasurement) {
+            if (
+                currentSegment.isNotEmpty() &&
+                sample.timestampMs - currentSegment.last().timestampMs > MAX_CONNECTED_SAMPLE_GAP_MS
+            ) {
+                segments += currentSegment.toList()
+                currentSegment = mutableListOf()
+            }
             currentSegment += sample
         } else if (currentSegment.isNotEmpty()) {
             segments += currentSegment.toList()

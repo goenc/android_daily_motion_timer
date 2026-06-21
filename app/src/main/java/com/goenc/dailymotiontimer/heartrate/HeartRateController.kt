@@ -178,6 +178,7 @@ object HeartRateController {
     }
 
     internal fun publishMeasurement(heartRate: Int, averageHeartRate: Int?, zone: HeartRateZone?, rule: HeartRateRule) {
+        if (heartRate <= 0) return
         val now = SystemClock.elapsedRealtime()
         val history = appendGraphSample(
             history = _uiState.value.heartRateHistory,
