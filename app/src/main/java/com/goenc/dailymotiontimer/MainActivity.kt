@@ -60,6 +60,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.goenc.dailymotiontimer.heartrate.HeartRateSettingsSection
 import com.goenc.dailymotiontimer.heartrate.HeartRateGraph
+import com.goenc.dailymotiontimer.heartrate.HeartRateGraphMode
 import com.goenc.dailymotiontimer.heartrate.HeartRateStatus
 import com.goenc.dailymotiontimer.heartrate.HeartRateAlertPhaseMode
 import com.goenc.dailymotiontimer.heartrate.HeartRateUiState
@@ -151,6 +152,7 @@ class MainActivity : ComponentActivity() {
                             onNormalStopClick = viewModel::stopNormalTimer,
                             onOpenOverlaySettingsClick = ::openOverlaySettings,
                             onOpenSettingsClick = { isSettingsScreenVisible = true },
+                            onGraphModeSelected = viewModel::setHeartRateGraphMode,
                         )
                     }
                 }
@@ -242,8 +244,18 @@ private fun MainTimerScreen(
     onNormalStopClick: () -> Unit,
     onOpenOverlaySettingsClick: () -> Unit,
     onOpenSettingsClick: () -> Unit,
+    onGraphModeSelected: (HeartRateGraphMode) -> Unit,
 ) {
     var selectedTab by rememberSaveable { mutableStateOf(MainTimerTab.Interval) }
+    LaunchedEffect(selectedTab) {
+        onGraphModeSelected(
+            if (selectedTab == MainTimerTab.Interval) {
+                HeartRateGraphMode.Interval
+            } else {
+                HeartRateGraphMode.Normal
+            },
+        )
+    }
 
     Column(
         modifier = modifier.fillMaxSize(),
@@ -371,8 +383,8 @@ private fun IntervalTimerScreen(
             }
         }
         HeartRateGraph(
-            samples = heartRateUiState.heartRateHistory,
-            phaseSamples = heartRateUiState.phaseHistory,
+            samples = heartRateUiState.intervalGraphState.heartRateHistory,
+            phaseSamples = heartRateUiState.intervalGraphState.phaseHistory,
             modifier = Modifier.padding(top = 12.dp),
         )
         Row(
@@ -475,8 +487,8 @@ private fun NormalTimerScreen(
         )
         Spacer(modifier = Modifier.height(12.dp))
         HeartRateGraph(
-            samples = heartRateUiState.heartRateHistory,
-            phaseSamples = heartRateUiState.phaseHistory,
+            samples = heartRateUiState.normalGraphState.heartRateHistory,
+            phaseSamples = heartRateUiState.normalGraphState.phaseHistory,
             modifier = Modifier.padding(top = 12.dp),
         )
         Row(
@@ -954,6 +966,7 @@ private fun TimerScreenPreview() {
             onNormalStopClick = {},
             onOpenOverlaySettingsClick = {},
             onOpenSettingsClick = {},
+            onGraphModeSelected = {},
         )
     }
 }

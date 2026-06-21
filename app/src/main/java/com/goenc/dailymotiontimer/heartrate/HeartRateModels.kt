@@ -70,14 +70,25 @@ data class HeartRatePhaseSample(
     val timestampMs: Long,
 )
 
+enum class HeartRateGraphMode {
+    Interval,
+    Normal,
+}
+
+data class HeartRateGraphState(
+    val heartRateHistory: List<HeartRateGraphSample> = emptyList(),
+    val phaseHistory: List<HeartRatePhaseSample> = emptyList(),
+)
+
 data class HeartRateUiState(
     val connectionState: HeartRateConnectionState = HeartRateConnectionState.DISCONNECTED,
     val heartRate: Int = 0,
     val averageHeartRate: Int? = null,
     val zone: HeartRateZone? = null,
     val rule: HeartRateRule = HeartRateZoneCalculator.buildRule(HeartRateSettings()),
-    val heartRateHistory: List<HeartRateGraphSample> = emptyList(),
-    val phaseHistory: List<HeartRatePhaseSample> = emptyList(),
+    val selectedGraphMode: HeartRateGraphMode = HeartRateGraphMode.Interval,
+    val intervalGraphState: HeartRateGraphState = HeartRateGraphState(),
+    val normalGraphState: HeartRateGraphState = HeartRateGraphState(),
     val devices: List<HeartRateDevice> = emptyList(),
     val savedDevice: HeartRateDevice? = null,
     val settings: HeartRateSettings = HeartRateSettings(),

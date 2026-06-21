@@ -160,6 +160,10 @@ object HeartRateController {
         }
     }
 
+    fun setGraphMode(mode: HeartRateGraphMode) {
+        _uiState.value = _uiState.value.copy(selectedGraphMode = mode)
+    }
+
     fun reportPermissionDenied() {
         _uiState.value = _uiState.value.copy(
             connectionState = HeartRateConnectionState.ERROR,
@@ -180,8 +184,9 @@ object HeartRateController {
     internal fun publishMeasurement(heartRate: Int, averageHeartRate: Int?, zone: HeartRateZone?, rule: HeartRateRule) {
         if (heartRate <= 0) return
         val now = SystemClock.elapsedRealtime()
+        val currentGraphState = _uiState.value.graphStateFor(_uiState.value.selectedGraphMode)
         val history = appendGraphSample(
-            history = _uiState.value.heartRateHistory,
+            history = currentGraphState.heartRateHistory,
             heartRate = heartRate,
             timestampMs = now,
             hasMeasurement = true,
@@ -191,21 +196,26 @@ object HeartRateController {
             averageHeartRate = averageHeartRate,
             zone = zone,
             rule = rule,
-            heartRateHistory = history,
+        ).withGraphState(
+            mode = _uiState.value.selectedGraphMode,
+            graphState = currentGraphState.copy(heartRateHistory = history),
         )
     }
 
     internal fun syncTimerState(state: TimerUiState) {
         val now = SystemClock.elapsedRealtime()
         val phase = state.currentPhase.takeIf { state.isRunning }
-        val history = _uiState.value.phaseHistory.toMutableList()
+        val intervalGraphState = _uiState.value.intervalGraphState
+        val history = intervalGraphState.phaseHistory.toMutableList()
         if (history.lastOrNull()?.phase != phase) {
             history += HeartRatePhaseSample(phase = phase, timestampMs = now)
         } else if (history.isEmpty()) {
             history += HeartRatePhaseSample(phase = phase, timestampMs = now)
         }
         trimPhaseHistory(history, cutoff = now - GRAPH_WINDOW_MS)
-        _uiState.value = _uiState.value.copy(phaseHistory = history)
+        _uiState.value = _uiState.value.copy(
+            intervalGraphState = intervalGraphState.copy(phaseHistory = history),
+        )
     }
 
     fun requiredPermissions(): Array<String> = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -262,5 +272,22 @@ object HeartRateController {
             updatedHistory.removeAt(0)
         }
         return updatedHistory
+    }
+
+    private fun HeartRateUiState.graphStateFor(mode: HeartRateGraphMode): HeartRateGraphState {
+        return when (mode) {
+            HeartRateGraphMode.Interval -> intervalGraphState
+            HeartRateGraphMode.Normal -> normalGraphState
+        }
+    }
+
+    private fun HeartRateUiState.withGraphState(
+        mode: HeartRateGraphMode,
+        graphState: HeartRateGraphState,
+    ): HeartRateUiState {
+        return when (mode) {
+            HeartRateGraphMode.Interval -> copy(intervalGraphState = graphState)
+            HeartRateGraphMode.Normal -> copy(normalGraphState = graphState)
+        }
     }
 }

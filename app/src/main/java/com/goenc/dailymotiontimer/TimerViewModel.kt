@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import android.os.SystemClock
 import com.goenc.dailymotiontimer.heartrate.HeartRateAlertPhaseMode
 import com.goenc.dailymotiontimer.heartrate.HeartRateController
+import com.goenc.dailymotiontimer.heartrate.HeartRateGraphMode
 import com.goenc.dailymotiontimer.heartrate.HeartRateUiState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -176,5 +177,9 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun reportHeartRatePermissionDenied() {
         HeartRateController.reportPermissionDenied()
+    }
+
+    fun setHeartRateGraphMode(mode: HeartRateGraphMode) {
+        HeartRateController.setGraphMode(mode)
     }
 }
