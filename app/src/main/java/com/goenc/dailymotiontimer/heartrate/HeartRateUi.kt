@@ -81,6 +81,9 @@ fun HeartRateSettingsSection(
         alertPhaseMode: HeartRateAlertPhaseMode,
     ) -> Unit,
     onAlertVolumeChange: (Float) -> Unit,
+    showVoiceAlertSwitch: Boolean = true,
+    showAlertPhaseModeSelector: Boolean = true,
+    showAlertToggleButtons: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     var targetLowerValue by remember(state.settings.targetLowerBpm) {
@@ -264,29 +267,31 @@ fun HeartRateSettingsSection(
             ),
             style = MaterialTheme.typography.bodySmall,
         )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = stringResource(R.string.heart_rate_voice_alert),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-            )
-            Switch(
-                checked = state.settings.alertsEnabled,
-                onCheckedChange = { enabled ->
-                    onSettingsChange(
-                        normalizedTargetLower,
-                        normalizedTargetUpper,
-                        normalizedDangerThreshold,
-                        enabled,
-                        normalizedConfirmSeconds,
-                        state.settings.alertPhaseMode,
-                    )
-                },
-            )
+        if (showVoiceAlertSwitch) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = stringResource(R.string.heart_rate_voice_alert),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                )
+                Switch(
+                    checked = state.settings.alertsEnabled,
+                    onCheckedChange = { enabled ->
+                        onSettingsChange(
+                            normalizedTargetLower,
+                            normalizedTargetUpper,
+                            normalizedDangerThreshold,
+                            enabled,
+                            normalizedConfirmSeconds,
+                            state.settings.alertPhaseMode,
+                        )
+                    },
+                )
+            }
         }
         HeartRateAlertVolumeSlider(
             alertVolume = state.settings.alertVolume,
@@ -318,42 +323,93 @@ fun HeartRateSettingsSection(
             valueRange = MIN_CONFIRM_SECONDS.toFloat()..MAX_CONFIRM_SECONDS.toFloat(),
             steps = MAX_CONFIRM_SECONDS - MIN_CONFIRM_SECONDS - 1,
         )
-        Text(
-            text = stringResource(R.string.heart_rate_alert_phase_mode),
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.Bold,
-        )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            HeartRateAlertPhaseMode.entries.forEach { mode ->
-                val isSelected = state.settings.alertPhaseMode == mode
-                val onClick = {
+        if (showAlertPhaseModeSelector) {
+            Text(
+                text = stringResource(R.string.heart_rate_alert_phase_mode),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                HeartRateAlertPhaseMode.entries.forEach { mode ->
+                    val isSelected = state.settings.alertPhaseMode == mode
+                    val onClick = {
+                        onSettingsChange(
+                            normalizedTargetLower,
+                            normalizedTargetUpper,
+                            normalizedDangerThreshold,
+                            state.settings.alertsEnabled,
+                            normalizedConfirmSeconds,
+                            mode,
+                        )
+                    }
+                    if (isSelected) {
+                        Button(
+                            onClick = onClick,
+                            modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
+                        ) {
+                            HeartRateAlertPhaseModeLabel(mode.label)
+                        }
+                    } else {
+                        OutlinedButton(
+                            onClick = onClick,
+                            modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
+                        ) {
+                            HeartRateAlertPhaseModeLabel(mode.label)
+                        }
+                    }
+                }
+            }
+        }
+        if (showAlertToggleButtons) {
+            Text(
+                text = stringResource(R.string.heart_rate_reading_toggle_title),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                val updateAlertsEnabled: (Boolean) -> Unit = { enabled ->
                     onSettingsChange(
                         normalizedTargetLower,
                         normalizedTargetUpper,
                         normalizedDangerThreshold,
-                        state.settings.alertsEnabled,
+                        enabled,
                         normalizedConfirmSeconds,
-                        mode,
+                        state.settings.alertPhaseMode,
                     )
                 }
-                if (isSelected) {
+                if (state.settings.alertsEnabled) {
                     Button(
-                        onClick = onClick,
+                        onClick = { updateAlertsEnabled(true) },
                         modifier = Modifier.weight(1f),
-                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
                     ) {
-                        HeartRateAlertPhaseModeLabel(mode.label)
+                        Text(stringResource(R.string.heart_rate_reading_enabled))
+                    }
+                    OutlinedButton(
+                        onClick = { updateAlertsEnabled(false) },
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text(stringResource(R.string.heart_rate_reading_disabled))
                     }
                 } else {
                     OutlinedButton(
-                        onClick = onClick,
+                        onClick = { updateAlertsEnabled(true) },
                         modifier = Modifier.weight(1f),
-                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
                     ) {
-                        HeartRateAlertPhaseModeLabel(mode.label)
+                        Text(stringResource(R.string.heart_rate_reading_enabled))
+                    }
+                    Button(
+                        onClick = { updateAlertsEnabled(false) },
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text(stringResource(R.string.heart_rate_reading_disabled))
                     }
                 }
             }

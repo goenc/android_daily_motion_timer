@@ -82,8 +82,8 @@ class MainActivity : ComponentActivity() {
                 val heartRateUiState by viewModel.heartRateUiState.collectAsState()
                 val displayState = rememberDisplayState(uiState)
                 val normalDisplayState = rememberDisplayState(normalTimerUiState)
+                var selectedMainTab by rememberSaveable { mutableStateOf(MainTimerTab.Interval) }
                 var isSettingsScreenVisible by rememberSaveable { mutableStateOf(false) }
-                var activeMainTab by rememberSaveable { mutableStateOf(MainTimerTab.Interval) }
                 val heartRatePermissionLauncher = rememberLauncherForActivityResult(
                     contract = ActivityResultContracts.RequestMultiplePermissions(),
                 ) {
@@ -104,7 +104,7 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                 ) { innerPadding ->
                     if (isSettingsScreenVisible) {
-                        if (activeMainTab == MainTimerTab.Interval) {
+                        if (selectedMainTab == MainTimerTab.Interval) {
                             IntervalSettingsScreen(
                                 uiState = displayState,
                                 heartRateUiState = heartRateUiState,
@@ -151,6 +151,7 @@ class MainActivity : ComponentActivity() {
                         MainTimerScreen(
                             uiState = displayState,
                             normalTimerUiState = normalDisplayState,
+                            selectedTab = selectedMainTab,
                             heartRateUiState = heartRateUiState,
                             modifier = Modifier.padding(innerPadding),
                             onIntervalStartPauseClick = {
@@ -172,7 +173,7 @@ class MainActivity : ComponentActivity() {
                             onOpenOverlaySettingsClick = ::openOverlaySettings,
                             onOpenSettingsClick = { isSettingsScreenVisible = true },
                             onGraphModeSelected = viewModel::setHeartRateGraphMode,
-                            onTabSelected = { activeMainTab = it },
+                            onTabSelected = { selectedMainTab = it },
                         )
                     }
                 }
@@ -256,6 +257,7 @@ private fun CenteredElapsedTimeText(
 private fun MainTimerScreen(
     uiState: TimerUiState,
     normalTimerUiState: NormalTimerUiState,
+    selectedTab: MainTimerTab,
     heartRateUiState: HeartRateUiState,
     modifier: Modifier = Modifier,
     onIntervalStartPauseClick: () -> Unit,
@@ -267,7 +269,6 @@ private fun MainTimerScreen(
     onGraphModeSelected: (HeartRateGraphMode) -> Unit,
     onTabSelected: (MainTimerTab) -> Unit,
 ) {
-    var selectedTab by rememberSaveable { mutableStateOf(MainTimerTab.Interval) }
     LaunchedEffect(selectedTab) {
         onTabSelected(selectedTab)
         onGraphModeSelected(
@@ -289,7 +290,7 @@ private fun MainTimerScreen(
             MainTimerTab.entries.forEach { tab ->
                 Tab(
                     selected = selectedTab == tab,
-                    onClick = { selectedTab = tab },
+                    onClick = { onTabSelected(tab) },
                     text = { Text(text = stringResource(tab.titleResId)) },
                 )
             }
@@ -800,6 +801,9 @@ private fun NormalSettingsScreen(
                 onForgetDevice = onForgetHeartRateDevice,
                 onSettingsChange = onHeartRateSettingsChange,
                 onAlertVolumeChange = onHeartRateAlertVolumeChange,
+                showVoiceAlertSwitch = false,
+                showAlertPhaseModeSelector = false,
+                showAlertToggleButtons = true,
             )
             Spacer(modifier = Modifier.height(24.dp))
         }
@@ -1045,6 +1049,7 @@ private fun TimerScreenPreview() {
         MainTimerScreen(
             uiState = TimerUiState(),
             normalTimerUiState = NormalTimerUiState(),
+            selectedTab = MainTimerTab.Interval,
             heartRateUiState = HeartRateUiState(),
             onIntervalStartPauseClick = {},
             onIntervalStopClick = {},
