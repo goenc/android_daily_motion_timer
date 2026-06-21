@@ -248,7 +248,6 @@ private fun TimerScreen(
         verticalArrangement = Arrangement.Top,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Spacer(modifier = Modifier.height(24.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.End,
@@ -290,14 +289,14 @@ private fun TimerScreen(
             fontWeight = FontWeight.Bold,
             color = activeTextColor,
         )
-        Spacer(modifier = Modifier.height(20.dp))
+        Spacer(modifier = Modifier.height(12.dp))
         HeartRateStatus(
             state = heartRateUiState,
             textColor = activeTextColor,
         )
-        Spacer(modifier = Modifier.height(32.dp))
+        Spacer(modifier = Modifier.height(12.dp))
         if (uiState.isActive && !Settings.canDrawOverlays(context)) {
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = stringResource(R.string.overlay_permission_explanation),
                 style = MaterialTheme.typography.bodyMedium,
@@ -312,12 +311,12 @@ private fun TimerScreen(
         }
         HeartRateGraph(
             samples = heartRateUiState.heartRateHistory,
-            modifier = Modifier.padding(top = 24.dp),
+            modifier = Modifier.padding(top = 12.dp),
         )
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 16.dp),
+                .padding(top = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Button(

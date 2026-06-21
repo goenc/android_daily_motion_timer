@@ -43,7 +43,7 @@ fun HeartRateGraph(
         shape = MaterialTheme.shapes.medium,
         color = MaterialTheme.colorScheme.surfaceContainer,
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
             Text(
                 text = stringResource(R.string.heart_rate_graph_title),
                 style = MaterialTheme.typography.titleMedium,
@@ -55,8 +55,8 @@ fun HeartRateGraph(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(180.dp)
-                    .padding(top = 8.dp)
+                    .height(132.dp)
+                    .padding(top = 4.dp)
                     .semantics {
                         contentDescription = graphDescription
                     },
