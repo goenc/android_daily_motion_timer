@@ -5,6 +5,7 @@ import android.bluetooth.BluetoothManager
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.SystemClock
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -175,11 +176,27 @@ object HeartRateController {
     }
 
     internal fun publishMeasurement(heartRate: Int, averageHeartRate: Int?, zone: HeartRateZone?, rule: HeartRateRule) {
+        val now = SystemClock.elapsedRealtime()
+        val history = _uiState.value.heartRateHistory.toMutableList()
+        val sample = HeartRateGraphSample(heartRate = heartRate, timestampMs = now)
+        if (history.isNotEmpty() && now - history.last().timestampMs < GRAPH_SAMPLE_INTERVAL_MS) {
+            history[history.lastIndex] = sample
+        } else {
+            history += sample
+        }
+        val cutoff = now - GRAPH_WINDOW_MS
+        while (history.size > 1 && history[1].timestampMs < cutoff) {
+            history.removeAt(0)
+        }
+        while (history.size > MAX_GRAPH_SAMPLES) {
+            history.removeAt(0)
+        }
         _uiState.value = _uiState.value.copy(
             heartRate = heartRate,
             averageHeartRate = averageHeartRate,
             zone = zone,
             rule = rule,
+            heartRateHistory = history,
         )
     }
 
@@ -192,4 +209,8 @@ object HeartRateController {
     fun hasBluetoothPermissions(context: Context): Boolean = requiredPermissions().all {
         ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
     }
+
+    private const val GRAPH_WINDOW_MS = 10 * 60 * 1_000L
+    private const val GRAPH_SAMPLE_INTERVAL_MS = 1_000L
+    private const val MAX_GRAPH_SAMPLES = 600
 }

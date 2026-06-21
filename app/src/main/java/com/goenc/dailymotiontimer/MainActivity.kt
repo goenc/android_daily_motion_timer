@@ -59,6 +59,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.goenc.dailymotiontimer.heartrate.HeartRateSettingsSection
+import com.goenc.dailymotiontimer.heartrate.HeartRateGraph
 import com.goenc.dailymotiontimer.heartrate.HeartRateStatus
 import com.goenc.dailymotiontimer.heartrate.HeartRateAlertPhaseMode
 import com.goenc.dailymotiontimer.heartrate.HeartRateUiState
@@ -309,10 +310,14 @@ private fun TimerScreen(
                 Text(text = stringResource(R.string.open_overlay_settings))
             }
         }
+        HeartRateGraph(
+            samples = heartRateUiState.heartRateHistory,
+            modifier = Modifier.padding(top = 24.dp),
+        )
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 32.dp),
+                .padding(top = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Button(

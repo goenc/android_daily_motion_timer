@@ -59,12 +59,18 @@ data class HeartRateDevice(
     val supportsHeartRate: Boolean = false,
 )
 
+data class HeartRateGraphSample(
+    val heartRate: Int,
+    val timestampMs: Long,
+)
+
 data class HeartRateUiState(
     val connectionState: HeartRateConnectionState = HeartRateConnectionState.DISCONNECTED,
     val heartRate: Int = 0,
     val averageHeartRate: Int? = null,
     val zone: HeartRateZone? = null,
     val rule: HeartRateRule = HeartRateZoneCalculator.buildRule(HeartRateSettings()),
+    val heartRateHistory: List<HeartRateGraphSample> = emptyList(),
     val devices: List<HeartRateDevice> = emptyList(),
     val savedDevice: HeartRateDevice? = null,
     val settings: HeartRateSettings = HeartRateSettings(),
