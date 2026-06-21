@@ -1,26 +1,15 @@
 package com.goenc.dailymotiontimer
 
-import android.Manifest
-import android.annotation.SuppressLint
-import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.os.Build
 import android.os.IBinder
-import android.os.PowerManager
 import android.os.SystemClock
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import android.util.Log
-import androidx.core.app.NotificationCompat
-import androidx.core.app.NotificationManagerCompat
-import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -42,6 +31,8 @@ class WalkingTimerService : Service() {
     private var countdownRefreshJob: Job? = null
     private lateinit var phaseAudioPlayer: PhaseAudioPlayer
     private lateinit var phaseOverlay: WalkingPhaseOverlay
+    private lateinit var notificationController: WalkingTimerNotificationController
+    private lateinit var wakeLockController: WakeLockController
 
     private var sessionStartElapsedRealtime = 0L
     private var accumulatedPauseMillis = 0L
@@ -63,20 +54,16 @@ class WalkingTimerService : Service() {
     private var isAppVisible = true
     private var lastObservedPhaseStartNumber = UNINITIALIZED_PHASE_START_NUMBER
     private var lastAnnouncedPhaseStartNumber = UNINITIALIZED_PHASE_START_NUMBER
-    @Volatile
-    private var hasForegroundNotification = false
-    private var wakeLock: PowerManager.WakeLock? = null
-
     override fun onCreate() {
         super.onCreate()
-        createNotificationChannel()
+        notificationController = WalkingTimerNotificationController(this).also { it.createChannel() }
+        wakeLockController = WakeLockController(applicationContext, TAG)
         phaseAudioPlayer = PhaseAudioPlayer(applicationContext)
         phaseOverlay = WalkingPhaseOverlay(applicationContext)
-        wakeLock = createWakeLock()
 
         val initialState = restorePersistedState() ?: TimerUiState()
         if (initialState.isRunning) {
-            acquireWakeLockIfNeeded()
+            wakeLockController.acquire()
         }
         publishState(initialState)
     }
@@ -108,7 +95,7 @@ class WalkingTimerService : Service() {
         if (state.isActive) {
             persistState()
         }
-        releaseWakeLockIfHeld()
+        wakeLockController.release()
         phaseOverlay.hide()
         phaseAudioPlayer.release()
         serviceScope.cancel()
@@ -132,7 +119,7 @@ class WalkingTimerService : Service() {
             val monitoredState = currentPhaseMonitorState(nowElapsedRealtime)
             val state = monitoredState.state
             syncPhaseStartTracking(monitoredState.phaseStartNumber, markAsAnnounced = true)
-            showNotification(state, promoteToForeground = !hasForegroundNotification)
+            notificationController.show(state, promoteToForeground = !notificationController.isForeground)
             publishAndPersistState(state)
             scheduleNextPhaseTransition(nowElapsedRealtime)
             schedulePhaseElapsedMilestones(monitoredState)
@@ -163,10 +150,10 @@ class WalkingTimerService : Service() {
             }
         }
 
-        acquireWakeLockIfNeeded()
+        wakeLockController.acquire()
         val monitoredState = currentPhaseMonitorState(nowElapsedRealtime)
         val state = monitoredState.state
-        showNotification(state, promoteToForeground = true)
+        notificationController.show(state, promoteToForeground = true)
         publishAndPersistState(state)
         val scheduledPhaseStartAnnouncement = isNewSession && !state.isPreparingStart
         if (scheduledPhaseStartAnnouncement) {
@@ -186,7 +173,7 @@ class WalkingTimerService : Service() {
         if (!isTimerRunning()) {
             val state = currentUiState()
             if (state.isActive) {
-                showNotification(state, promoteToForeground = !hasForegroundNotification)
+                notificationController.show(state, promoteToForeground = !notificationController.isForeground)
                 publishAndPersistState(state)
             } else {
                 publishState(state)
@@ -205,10 +192,10 @@ class WalkingTimerService : Service() {
         cancelPhaseElapsedMilestoneJob("pause")
         cancelPhaseBeepJob("pause")
         cancelCountdownRefreshJob("pause")
-        releaseWakeLockIfHeld()
+        wakeLockController.release()
 
         val pausedState = currentUiState(nowElapsedRealtime)
-        showNotification(pausedState, promoteToForeground = !hasForegroundNotification)
+        notificationController.show(pausedState, promoteToForeground = !notificationController.isForeground)
         publishAndPersistState(pausedState)
         return pausedState
     }
@@ -223,17 +210,15 @@ class WalkingTimerService : Service() {
         cancelPhaseElapsedMilestoneJob("stop")
         cancelPhaseBeepJob("stop")
         cancelCountdownRefreshJob("stop")
-        releaseWakeLockIfHeld()
+        wakeLockController.release()
         phaseAudioPlayer.stop()
         resetTimerProgressState()
         resetPhaseStartTracking()
         persistState()
 
         val stoppedState = currentUiState()
-        hasForegroundNotification = false
         phaseOverlay.hide()
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        NotificationManagerCompat.from(this).cancel(NOTIFICATION_ID)
+        notificationController.stop()
         publishState(stoppedState)
         stopSelf()
     }
@@ -280,7 +265,7 @@ class WalkingTimerService : Service() {
         }
 
         publishState(state)
-        updateNotification(state)
+        notificationController.update(state)
 
         val shouldAnnounce = synchronized(stateLock) {
             val previousObservedPhaseStartNumber = lastObservedPhaseStartNumber
@@ -376,97 +361,6 @@ class WalkingTimerService : Service() {
         }
     }
 
-    private fun buildNotification(state: TimerUiState): Notification {
-        val statusText =
-            getString(
-                if (state.isPaused) {
-                    R.string.notification_paused
-                } else {
-                    R.string.notification_running
-                },
-            )
-        val builder = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-            .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle(getString(R.string.app_name))
-            .setContentText("${state.currentPhase.label} ${state.formattedRemainingTime}")
-            .setSubText(statusText)
-            .setContentIntent(createContentIntent())
-            .setOnlyAlertOnce(true)
-            .setOngoing(state.isActive)
-
-        if (state.isRunning) {
-            builder.addAction(
-                0,
-                getString(R.string.pause),
-                createServicePendingIntent(ACTION_PAUSE, REQUEST_CODE_PAUSE),
-            )
-        } else if (state.isPaused) {
-            builder.addAction(
-                0,
-                getString(R.string.resume),
-                createServicePendingIntent(ACTION_START_OR_RESUME, REQUEST_CODE_RESUME),
-            )
-        }
-
-        if (state.isActive) {
-            builder.addAction(
-                0,
-                getString(R.string.stop),
-                createServicePendingIntent(ACTION_STOP, REQUEST_CODE_STOP),
-            )
-        }
-
-        return builder.build()
-    }
-
-    private fun createContentIntent(): PendingIntent {
-        val intent = Intent(this, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        }
-        return PendingIntent.getActivity(
-            this,
-            0,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-    }
-
-    private fun createServicePendingIntent(action: String, requestCode: Int): PendingIntent {
-        return PendingIntent.getService(
-            this,
-            requestCode,
-            createIntent(this, action),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-    }
-
-    @SuppressLint("MissingPermission")
-    private fun showNotification(state: TimerUiState, promoteToForeground: Boolean) {
-        val notification = buildNotification(state)
-        if (promoteToForeground || !hasForegroundNotification) {
-            startForeground(NOTIFICATION_ID, notification)
-            hasForegroundNotification = true
-            return
-        }
-        if (canPostNotifications()) {
-            NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, notification)
-        }
-    }
-
-    @SuppressLint("MissingPermission")
-    private fun updateNotification(state: TimerUiState) {
-        if (!state.isActive || !hasForegroundNotification) {
-            return
-        }
-        if (canPostNotifications()) {
-            NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, buildNotification(state))
-        }
-    }
-
-    private fun canPostNotifications(): Boolean = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-        ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
-        PackageManager.PERMISSION_GRANTED
-
     private fun updatePhaseOverlay(state: TimerUiState) {
         if (state.isActive && !isAppVisible) {
             phaseOverlay.showOrUpdate(state)
@@ -486,7 +380,7 @@ class WalkingTimerService : Service() {
         val state = monitoredState.state
 
         if (state.isActive) {
-            showNotification(state, promoteToForeground = true)
+            notificationController.show(state, promoteToForeground = true)
         }
 
         publishAndPersistState(state)
@@ -496,7 +390,7 @@ class WalkingTimerService : Service() {
             resetPhaseStartTracking()
         }
         if (state.isRunning) {
-            acquireWakeLockIfNeeded()
+            wakeLockController.acquire()
             scheduleNextPhaseTransition(nowElapsedRealtime)
             schedulePhaseElapsedMilestones(monitoredState)
             schedulePhaseBeepPlayback(monitoredState)
@@ -507,7 +401,7 @@ class WalkingTimerService : Service() {
             cancelPhaseElapsedMilestoneJob("restore inactive session")
             cancelPhaseBeepJob("restore inactive session")
             cancelCountdownRefreshJob("restore inactive session")
-            releaseWakeLockIfHeld()
+            wakeLockController.release()
         }
         return state
     }
@@ -1047,7 +941,7 @@ class WalkingTimerService : Service() {
             while (isTimerRunning()) {
                 val state = currentUiState()
                 publishState(state)
-                updateNotification(state)
+                notificationController.update(state)
                 delay(COUNTDOWN_REFRESH_INTERVAL_MILLIS)
             }
         }
@@ -1081,45 +975,6 @@ class WalkingTimerService : Service() {
         }
         val remainder = phaseElapsedMillis % intervalMillis
         return if (remainder == 0L) intervalMillis else (intervalMillis - remainder).coerceAtLeast(1L)
-    }
-
-    private fun createWakeLock(): PowerManager.WakeLock? {
-        val powerManager = getSystemService(PowerManager::class.java) ?: run {
-            Log.w(TAG, "PowerManager was unavailable, WakeLock was not created")
-            return null
-        }
-        return powerManager.newWakeLock(
-            PowerManager.PARTIAL_WAKE_LOCK,
-            "$packageName:WalkingTimerService",
-        ).apply {
-            setReferenceCounted(false)
-        }
-    }
-
-    private fun acquireWakeLockIfNeeded() {
-        val lock = wakeLock ?: createWakeLock()?.also { wakeLock = it } ?: return
-        if (lock.isHeld) {
-            return
-        }
-        runCatching {
-            lock.acquire()
-            Log.i(TAG, "WakeLock acquired")
-        }.onFailure { error ->
-            Log.e(TAG, "Failed to acquire WakeLock", error)
-        }
-    }
-
-    private fun releaseWakeLockIfHeld() {
-        val lock = wakeLock ?: return
-        if (!lock.isHeld) {
-            return
-        }
-        runCatching {
-            lock.release()
-            Log.i(TAG, "WakeLock released")
-        }.onFailure { error ->
-            Log.e(TAG, "Failed to release WakeLock", error)
-        }
     }
 
     private fun updateAnnouncementVolume(intent: Intent?): TimerUiState {
@@ -1157,22 +1012,6 @@ class WalkingTimerService : Service() {
         return state
     }
 
-    private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
-            return
-        }
-
-        val manager = getSystemService(NotificationManager::class.java)
-        val channel = NotificationChannel(
-            NOTIFICATION_CHANNEL_ID,
-            getString(R.string.timer_notification_channel_name),
-            NotificationManager.IMPORTANCE_LOW,
-        ).apply {
-            description = getString(R.string.timer_notification_channel_description)
-        }
-        manager.createNotificationChannel(channel)
-    }
-
     companion object {
         const val ACTION_START_OR_RESUME = "com.goenc.dailymotiontimer.action.START_OR_RESUME"
         const val ACTION_PAUSE = "com.goenc.dailymotiontimer.action.PAUSE"
@@ -1182,12 +1021,7 @@ class WalkingTimerService : Service() {
         const val ACTION_UPDATE_BEEP_VOLUME = "com.goenc.dailymotiontimer.action.UPDATE_BEEP_VOLUME"
         const val ACTION_SET_APP_VISIBLE = "com.goenc.dailymotiontimer.action.SET_APP_VISIBLE"
 
-        private const val NOTIFICATION_CHANNEL_ID = "walking_timer"
-        private const val NOTIFICATION_ID = 1001
         private const val TRANSITION_VIBRATION_DURATION_MILLIS = 200L
-        private const val REQUEST_CODE_PAUSE = 1
-        private const val REQUEST_CODE_RESUME = 2
-        private const val REQUEST_CODE_STOP = 3
         private const val EXTRA_ANNOUNCEMENT_VOLUME = "extra_announcement_volume"
         private const val EXTRA_BEEP_VOLUME = "extra_beep_volume"
         private const val EXTRA_APP_VISIBLE = "extra_app_visible"
