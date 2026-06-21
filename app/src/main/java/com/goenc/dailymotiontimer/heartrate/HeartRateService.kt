@@ -34,6 +34,7 @@ class HeartRateService : Service(), TextToSpeech.OnInitListener {
     private var speechReady = false
     private var pendingSpeech: String? = null
     private var reconnectEnabled = false
+    private var connectionAttemptId = 0L
     private var state = HeartRateConnectionState.DISCONNECTED
     private var heartRate = 0
     private var averageHeartRate: Int? = null
@@ -42,6 +43,8 @@ class HeartRateService : Service(), TextToSpeech.OnInitListener {
     private var alertVolume = DEFAULT_HEART_RATE_ALERT_VOLUME
     private var appliedAlertSettings: HeartRateSettings? = null
     private val reconnectRunnable = Runnable(::connectSavedDevice)
+    private var connectionTimeoutRunnable: Runnable? = null
+    private var measurementTimeoutRunnable: Runnable? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -103,33 +106,90 @@ class HeartRateService : Service(), TextToSpeech.OnInitListener {
             updateState(HeartRateConnectionState.ERROR, "保存したデバイス情報が不正です")
             return
         }
-        client?.disconnect()
-        client = HeartRateBleClient(
+        closeCurrentClient()
+        val attemptId = connectionAttemptId
+        val newClient = HeartRateBleClient(
             context = this,
-            onStateChanged = ::handleClientState,
-            onHeartRateChanged = { value ->
-                if (value > 0) {
-                    heartRate = value
-                    ensureAlertSettings()
-                    alertEngine.onHeartRateSample(
-                        heartRate = value,
-                        timestampMs = SystemClock.elapsedRealtime(),
-                        alertsSuppressed = !shouldAnnounceForCurrentTimerState(),
-                    )
-                    updateNotification(savedDevice)
-                }
+            onStateChanged = { newState, message ->
+                handleClientState(attemptId, newState, message)
             },
-        ).also { it.connect(device) }
+            onHeartRateChanged = { value ->
+                handler.post { handleHeartRate(attemptId, savedDevice, value) }
+            },
+        )
+        client = newClient
+        scheduleConnectionTimeout(attemptId)
+        newClient.connect(device)
     }
 
-    private fun handleClientState(newState: HeartRateConnectionState, message: String?) {
+    private fun handleClientState(
+        attemptId: Long,
+        newState: HeartRateConnectionState,
+        message: String?,
+    ) {
         handler.post {
+            if (attemptId != connectionAttemptId) return@post
+            if (newState == HeartRateConnectionState.CONNECTED) {
+                cancelConnectionTimeout()
+                scheduleMeasurementTimeout(attemptId)
+            }
             updateState(newState, message)
             if (newState == HeartRateConnectionState.DISCONNECTED || newState == HeartRateConnectionState.ERROR) {
-                client = null
+                closeCurrentClient()
                 scheduleReconnect()
             }
         }
+    }
+
+    private fun handleHeartRate(attemptId: Long, device: HeartRateDevice, value: Int) {
+        if (attemptId != connectionAttemptId || state != HeartRateConnectionState.CONNECTED || value <= 0) return
+        scheduleMeasurementTimeout(attemptId)
+        heartRate = value
+        ensureAlertSettings()
+        alertEngine.onHeartRateSample(
+            heartRate = value,
+            timestampMs = SystemClock.elapsedRealtime(),
+            alertsSuppressed = !shouldAnnounceForCurrentTimerState(),
+        )
+        updateNotification(device)
+    }
+
+    private fun scheduleConnectionTimeout(attemptId: Long) {
+        cancelConnectionTimeout()
+        connectionTimeoutRunnable = Runnable {
+            if (attemptId != connectionAttemptId || state != HeartRateConnectionState.CONNECTING) return@Runnable
+            closeCurrentClient()
+            updateState(HeartRateConnectionState.ERROR, "心拍センサーへの接続がタイムアウトしました")
+            scheduleReconnect()
+        }.also { handler.postDelayed(it, CONNECTION_TIMEOUT_MS) }
+    }
+
+    private fun scheduleMeasurementTimeout(attemptId: Long) {
+        cancelMeasurementTimeout()
+        measurementTimeoutRunnable = Runnable {
+            if (attemptId != connectionAttemptId || state != HeartRateConnectionState.CONNECTED) return@Runnable
+            closeCurrentClient()
+            updateState(HeartRateConnectionState.ERROR, "心拍データが途切れたため再接続します")
+            scheduleReconnect()
+        }.also { handler.postDelayed(it, MEASUREMENT_TIMEOUT_MS) }
+    }
+
+    private fun closeCurrentClient() {
+        connectionAttemptId++
+        cancelConnectionTimeout()
+        cancelMeasurementTimeout()
+        client?.disconnect()
+        client = null
+    }
+
+    private fun cancelConnectionTimeout() {
+        connectionTimeoutRunnable?.let(handler::removeCallbacks)
+        connectionTimeoutRunnable = null
+    }
+
+    private fun cancelMeasurementTimeout() {
+        measurementTimeoutRunnable?.let(handler::removeCallbacks)
+        measurementTimeoutRunnable = null
     }
 
     private fun updateState(newState: HeartRateConnectionState, message: String? = null) {
@@ -153,8 +213,7 @@ class HeartRateService : Service(), TextToSpeech.OnInitListener {
     private fun disconnectAndStop(clearDevice: Boolean) {
         reconnectEnabled = false
         handler.removeCallbacks(reconnectRunnable)
-        client?.disconnect()
-        client = null
+        closeCurrentClient()
         if (clearDevice) preferences.clearDevice()
         updateState(HeartRateConnectionState.DISCONNECTED)
         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -272,7 +331,7 @@ class HeartRateService : Service(), TextToSpeech.OnInitListener {
     override fun onDestroy() {
         reconnectEnabled = false
         handler.removeCallbacks(reconnectRunnable)
-        client?.disconnect()
+        closeCurrentClient()
         alertEngine.reset()
         textToSpeech?.shutdown()
         super.onDestroy()
@@ -286,6 +345,8 @@ class HeartRateService : Service(), TextToSpeech.OnInitListener {
         private const val CHANNEL_ID = "heart_rate_connection"
         private const val NOTIFICATION_ID = 1002
         private const val RECONNECT_DELAY_MS = 5_000L
+        private const val CONNECTION_TIMEOUT_MS = 20_000L
+        private const val MEASUREMENT_TIMEOUT_MS = 60_000L
 
         fun createIntent(context: Context, action: String): Intent =
             Intent(context.applicationContext, HeartRateService::class.java).setAction(action)
