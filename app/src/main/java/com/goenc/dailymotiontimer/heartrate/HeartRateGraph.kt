@@ -24,7 +24,7 @@ import androidx.compose.ui.unit.dp
 import com.goenc.dailymotiontimer.R
 import com.goenc.dailymotiontimer.WalkingPhase
 
-private const val GRAPH_MIN_BPM = 0
+private const val GRAPH_MIN_BPM = 50
 private const val GRAPH_MAX_BPM = 150
 private const val GRAPH_WINDOW_MS = 10 * 60 * 1_000L
 private val FAST_PHASE_BACKGROUND = Color(0x55FFA726)
