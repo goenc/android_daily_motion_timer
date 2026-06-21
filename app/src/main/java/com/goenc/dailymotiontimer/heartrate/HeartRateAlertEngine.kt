@@ -84,7 +84,7 @@ class HeartRateAlertEngine(
         if (!force && lastAlert != null && timestampMs - lastAlert < cooldown) return
         onAlert(
             when (zone) {
-                HeartRateZone.LOW -> "心拍が低いです。少し上げてください"
+                HeartRateZone.LOW -> INTERVAL_LOW_HEART_RATE_ALERT_MESSAGE
                 HeartRateZone.TARGET -> "範囲内です"
                 HeartRateZone.HIGH -> "心拍が高めです"
                 HeartRateZone.TOO_HIGH -> "上がりすぎです。ペースを落としてください"

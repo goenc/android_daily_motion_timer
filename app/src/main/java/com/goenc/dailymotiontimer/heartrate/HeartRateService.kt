@@ -40,17 +40,16 @@ class HeartRateService : Service(), TextToSpeech.OnInitListener {
     private var zone: HeartRateZone? = null
     private var rule = HeartRateZoneCalculator.buildRule(HeartRateSettings())
     private var alertVolume = DEFAULT_HEART_RATE_ALERT_VOLUME
+    private var appliedAlertSettings: HeartRateSettings? = null
     private val reconnectRunnable = Runnable(::connectSavedDevice)
 
     override fun onCreate() {
         super.onCreate()
         preferences = HeartRatePreferences(this)
-        val settings = preferences.loadSettings(preferences.loadSelectedMode())
-        rule = HeartRateZoneCalculator.buildRule(settings)
-        alertVolume = settings.alertVolume
+        ensureAlertSettings()
         textToSpeech = TextToSpeech(applicationContext, this)
         alertEngine = HeartRateAlertEngine(
-            initialSettings = settings,
+            initialSettings = checkNotNull(appliedAlertSettings),
             onSnapshot = { average, currentZone, currentRule ->
                 averageHeartRate = average
                 zone = currentZone
@@ -73,11 +72,7 @@ class HeartRateService : Service(), TextToSpeech.OnInitListener {
         when (intent?.action) {
             ACTION_DISCONNECT -> disconnectAndStop(clearDevice = false)
             ACTION_FORGET_DEVICE -> disconnectAndStop(clearDevice = true)
-            ACTION_UPDATE_SETTINGS -> {
-                val settings = preferences.loadSettings(preferences.loadSelectedMode())
-                alertVolume = settings.alertVolume
-                alertEngine.updateSettings(settings)
-            }
+            ACTION_UPDATE_SETTINGS -> ensureAlertSettings()
             else -> {
                 startForeground(NOTIFICATION_ID, buildNotification("接続を準備中"))
                 reconnectEnabled = true
@@ -115,6 +110,7 @@ class HeartRateService : Service(), TextToSpeech.OnInitListener {
             onHeartRateChanged = { value ->
                 if (value > 0) {
                     heartRate = value
+                    ensureAlertSettings()
                     alertEngine.onHeartRateSample(
                         heartRate = value,
                         timestampMs = SystemClock.elapsedRealtime(),
@@ -210,8 +206,12 @@ class HeartRateService : Service(), TextToSpeech.OnInitListener {
             textToSpeech?.stop()
             return
         }
+        val speechText = resolveHeartRateAlertSpeechMessage(
+            alertMessage = message,
+            isNormalTimerActive = HeartRateController.isNormalTimerRunning(),
+        ) ?: return
         if (!speechReady) {
-            pendingSpeech = message
+            pendingSpeech = speechText
             return
         }
         val params = Bundle().apply {
@@ -220,15 +220,41 @@ class HeartRateService : Service(), TextToSpeech.OnInitListener {
                 heartRateAlertVolumeToSpeechVolume(alertVolume),
             )
         }
-        textToSpeech?.speak(message, TextToSpeech.QUEUE_FLUSH, params, "heart_rate_alert")
+        textToSpeech?.speak(speechText, TextToSpeech.QUEUE_FLUSH, params, "heart_rate_alert")
     }
 
     private fun shouldAnnounceForCurrentTimerState(): Boolean {
-        val timerState = currentTimerState() ?: return false
-        if (!timerState.isRunning) {
-            return false
+        val intervalState = currentTimerState()
+        return shouldEnableHeartRateAlerts(
+            isNormalTimerRunning = HeartRateController.isNormalTimerRunning(),
+            isIntervalTimerRunning = intervalState?.isRunning == true,
+            intervalPhase = intervalState?.currentPhase,
+            normalSettings = preferences.loadSettings(HeartRateGraphMode.Normal),
+            intervalSettings = preferences.loadSettings(HeartRateGraphMode.Interval),
+        )
+    }
+
+    private fun activeHeartRateGraphMode(): HeartRateGraphMode {
+        if (HeartRateController.isNormalTimerRunning()) {
+            return HeartRateGraphMode.Normal
         }
-        return preferences.loadSettings(preferences.loadSelectedMode()).alertPhaseMode.shouldAnnounce(timerState.currentPhase)
+        if (currentTimerState()?.isRunning == true) {
+            return HeartRateGraphMode.Interval
+        }
+        return preferences.loadSelectedMode()
+    }
+
+    private fun ensureAlertSettings() {
+        val settings = preferences.loadSettings(activeHeartRateGraphMode())
+        if (settings == appliedAlertSettings) {
+            return
+        }
+        appliedAlertSettings = settings
+        alertVolume = settings.alertVolume
+        rule = HeartRateZoneCalculator.buildRule(settings)
+        if (::alertEngine.isInitialized) {
+            alertEngine.updateSettings(settings)
+        }
     }
 
     private fun currentTimerState(): TimerUiState? {

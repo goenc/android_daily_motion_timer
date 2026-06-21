@@ -108,6 +108,39 @@ internal const val MAX_CONFIRM_SECONDS = 90
 internal const val DEFAULT_HEART_RATE_ALERT_VOLUME = 1.0f
 internal const val MAX_HEART_RATE_ALERT_VOLUME = 2.0f
 
+internal const val INTERVAL_LOW_HEART_RATE_ALERT_MESSAGE = "心拍が低いです。少し上げてください"
+internal const val NORMAL_LOW_HEART_RATE_ALERT_MESSAGE = "心拍数が低いです"
+
+internal fun shouldEnableHeartRateAlerts(
+    isNormalTimerRunning: Boolean,
+    isIntervalTimerRunning: Boolean,
+    intervalPhase: WalkingPhase?,
+    normalSettings: HeartRateSettings,
+    intervalSettings: HeartRateSettings,
+): Boolean {
+    if (isNormalTimerRunning) {
+        return normalSettings.alertsEnabled
+    }
+    if (!isIntervalTimerRunning || intervalPhase == null) {
+        return false
+    }
+    return intervalSettings.alertPhaseMode.shouldAnnounce(intervalPhase)
+}
+
+internal fun resolveHeartRateAlertSpeechMessage(
+    alertMessage: String,
+    isNormalTimerActive: Boolean,
+): String? {
+    if (!isNormalTimerActive) {
+        return alertMessage
+    }
+    return if (alertMessage == INTERVAL_LOW_HEART_RATE_ALERT_MESSAGE) {
+        NORMAL_LOW_HEART_RATE_ALERT_MESSAGE
+    } else {
+        null
+    }
+}
+
 internal fun normalizeHeartRateAlertVolume(volume: Float): Float {
     return if (volume.isNaN() || volume.isInfinite()) {
         DEFAULT_HEART_RATE_ALERT_VOLUME

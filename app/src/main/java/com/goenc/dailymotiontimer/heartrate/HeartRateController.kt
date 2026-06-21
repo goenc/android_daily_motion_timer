@@ -20,6 +20,9 @@ object HeartRateController {
     private var scanner: HeartRateScanner? = null
     private var initialized = false
     private var applicationContext: Context? = null
+    private var normalTimerIsRunning = false
+
+    internal fun isNormalTimerRunning(): Boolean = normalTimerIsRunning
 
     fun initialize(context: Context) {
         if (initialized) return
@@ -233,6 +236,7 @@ object HeartRateController {
     }
 
     internal fun syncNormalTimerState(state: NormalTimerUiState) {
+        normalTimerIsRunning = state.isRunning
         val band = HeartRateGraphBand.NormalActive.takeIf { state.isRunning }
         syncGraphBandHistory(HeartRateGraphMode.Normal, band)
     }

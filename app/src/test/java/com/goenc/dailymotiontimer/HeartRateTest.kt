@@ -1,10 +1,16 @@
 package com.goenc.dailymotiontimer
 
+import com.goenc.dailymotiontimer.heartrate.HeartRateAlertPhaseMode
 import com.goenc.dailymotiontimer.heartrate.HeartRateAlertEngine
 import com.goenc.dailymotiontimer.heartrate.HeartRateParser
 import com.goenc.dailymotiontimer.heartrate.HeartRateSettings
 import com.goenc.dailymotiontimer.heartrate.HeartRateZone
 import com.goenc.dailymotiontimer.heartrate.HeartRateZoneCalculator
+import com.goenc.dailymotiontimer.heartrate.INTERVAL_LOW_HEART_RATE_ALERT_MESSAGE
+import com.goenc.dailymotiontimer.heartrate.NORMAL_LOW_HEART_RATE_ALERT_MESSAGE
+import com.goenc.dailymotiontimer.heartrate.resolveHeartRateAlertSpeechMessage
+import com.goenc.dailymotiontimer.heartrate.shouldEnableHeartRateAlerts
+import com.goenc.dailymotiontimer.WalkingPhase
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -92,6 +98,79 @@ class HeartRateTest {
         assertEquals(emptyList<String>(), alerts)
 
         engine.onHeartRateSample(80, timestampMs = 60_000L, alertsSuppressed = false)
-        assertEquals(listOf("心拍が低いです。少し上げてください"), alerts)
+        assertEquals(listOf(INTERVAL_LOW_HEART_RATE_ALERT_MESSAGE), alerts)
+    }
+
+    @Test
+    fun normalTimerEnablesLowHeartRateAlertsWhenEnabled() {
+        val settings = HeartRateSettings(alertsEnabled = true)
+
+        assertEquals(
+            true,
+            shouldEnableHeartRateAlerts(
+                isNormalTimerRunning = true,
+                isIntervalTimerRunning = false,
+                intervalPhase = null,
+                normalSettings = settings,
+                intervalSettings = settings,
+            ),
+        )
+    }
+
+    @Test
+    fun normalTimerSuppressesNonLowAlertSpeech() {
+        assertEquals(
+            NORMAL_LOW_HEART_RATE_ALERT_MESSAGE,
+            resolveHeartRateAlertSpeechMessage(
+                alertMessage = INTERVAL_LOW_HEART_RATE_ALERT_MESSAGE,
+                isNormalTimerActive = true,
+            ),
+        )
+        assertNull(
+            resolveHeartRateAlertSpeechMessage(
+                alertMessage = "上がりすぎです。ペースを落としてください",
+                isNormalTimerActive = true,
+            ),
+        )
+    }
+
+    @Test
+    fun intervalTimerStillUsesOriginalLowHeartRateMessage() {
+        assertEquals(
+            INTERVAL_LOW_HEART_RATE_ALERT_MESSAGE,
+            resolveHeartRateAlertSpeechMessage(
+                alertMessage = INTERVAL_LOW_HEART_RATE_ALERT_MESSAGE,
+                isNormalTimerActive = false,
+            ),
+        )
+    }
+
+    @Test
+    fun intervalTimerRespectsAlertPhaseMode() {
+        val settings = HeartRateSettings(
+            alertsEnabled = true,
+            alertPhaseMode = HeartRateAlertPhaseMode.FastOnly,
+        )
+
+        assertEquals(
+            true,
+            shouldEnableHeartRateAlerts(
+                isNormalTimerRunning = false,
+                isIntervalTimerRunning = true,
+                intervalPhase = WalkingPhase.Fast,
+                normalSettings = settings,
+                intervalSettings = settings,
+            ),
+        )
+        assertEquals(
+            false,
+            shouldEnableHeartRateAlerts(
+                isNormalTimerRunning = false,
+                isIntervalTimerRunning = true,
+                intervalPhase = WalkingPhase.Slow,
+                normalSettings = settings,
+                intervalSettings = settings,
+            ),
+        )
     }
 }
