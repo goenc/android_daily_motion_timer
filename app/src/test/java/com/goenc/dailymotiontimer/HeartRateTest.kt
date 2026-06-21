@@ -10,6 +10,7 @@ import com.goenc.dailymotiontimer.heartrate.INTERVAL_DANGER_HEART_RATE_ALERT_MES
 import com.goenc.dailymotiontimer.heartrate.INTERVAL_LOW_HEART_RATE_ALERT_MESSAGE
 import com.goenc.dailymotiontimer.heartrate.INTERVAL_TOO_HIGH_HEART_RATE_ALERT_MESSAGE
 import com.goenc.dailymotiontimer.heartrate.NORMAL_DANGER_HEART_RATE_ALERT_MESSAGE
+import com.goenc.dailymotiontimer.heartrate.NORMAL_HIGH_HEART_RATE_ALERT_MESSAGE
 import com.goenc.dailymotiontimer.heartrate.NORMAL_LOW_HEART_RATE_ALERT_MESSAGE
 import com.goenc.dailymotiontimer.heartrate.NORMAL_TOO_HIGH_HEART_RATE_ALERT_MESSAGE
 import com.goenc.dailymotiontimer.heartrate.resolveHeartRateAlertSpeechMessage
@@ -122,11 +123,18 @@ class HeartRateTest {
     }
 
     @Test
-    fun normalTimerMapsLowTooHighAndDangerAlertSpeech() {
+    fun normalTimerMapsLowHighTooHighAndDangerAlertSpeech() {
         assertEquals(
             NORMAL_LOW_HEART_RATE_ALERT_MESSAGE,
             resolveHeartRateAlertSpeechMessage(
                 alertMessage = INTERVAL_LOW_HEART_RATE_ALERT_MESSAGE,
+                isNormalTimerActive = true,
+            ),
+        )
+        assertEquals(
+            NORMAL_HIGH_HEART_RATE_ALERT_MESSAGE,
+            resolveHeartRateAlertSpeechMessage(
+                alertMessage = "心拍が高めです",
                 isNormalTimerActive = true,
             ),
         )
@@ -141,12 +149,6 @@ class HeartRateTest {
             NORMAL_DANGER_HEART_RATE_ALERT_MESSAGE,
             resolveHeartRateAlertSpeechMessage(
                 alertMessage = INTERVAL_DANGER_HEART_RATE_ALERT_MESSAGE,
-                isNormalTimerActive = true,
-            ),
-        )
-        assertNull(
-            resolveHeartRateAlertSpeechMessage(
-                alertMessage = "心拍が高めです",
                 isNormalTimerActive = true,
             ),
         )
