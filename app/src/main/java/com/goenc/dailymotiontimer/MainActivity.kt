@@ -83,6 +83,7 @@ class MainActivity : ComponentActivity() {
                 val displayState = rememberDisplayState(uiState)
                 val normalDisplayState = rememberDisplayState(normalTimerUiState)
                 var isSettingsScreenVisible by rememberSaveable { mutableStateOf(false) }
+                var activeMainTab by rememberSaveable { mutableStateOf(MainTimerTab.Interval) }
                 val heartRatePermissionLauncher = rememberLauncherForActivityResult(
                     contract = ActivityResultContracts.RequestMultiplePermissions(),
                 ) {
@@ -103,31 +104,49 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                 ) { innerPadding ->
                     if (isSettingsScreenVisible) {
-                        SettingsScreen(
-                            uiState = displayState,
-                            heartRateUiState = heartRateUiState,
-                            modifier = Modifier.padding(innerPadding),
-                            onFastPhaseDurationChange = viewModel::updateFastPhaseDurationSeconds,
-                            onSlowPhaseDurationChange = viewModel::updateSlowPhaseDurationSeconds,
-                            onAnnouncementVolumeChange = viewModel::updateAnnouncementVolume,
-                            onBeepVolumeChange = viewModel::updateBeepVolume,
-                            onVibrationEnabledChange = viewModel::updateVibrationEnabled,
-                            onFastPhaseBeepPitchChange = viewModel::updateFastPhaseBeepPitchPreset,
-                            onSlowPhaseBeepPitchChange = viewModel::updateSlowPhaseBeepPitchPreset,
-                            onFastPhaseBeepIntervalChange = viewModel::updateFastPhaseBeepIntervalSeconds,
-                            onSlowPhaseBeepIntervalChange = viewModel::updateSlowPhaseBeepIntervalSeconds,
-                            onStartHeartRateScan = startHeartRateScan,
-                            onReconnectSavedDevice = viewModel::connectSavedHeartRateDevice,
-                            onConnectHeartRateDevice = viewModel::connectHeartRateDevice,
-                            onDisconnectHeartRateDevice = viewModel::disconnectHeartRateDevice,
-                            onForgetHeartRateDevice = viewModel::forgetHeartRateDevice,
-                            onHeartRateSettingsChange = viewModel::updateHeartRateSettings,
-                            onHeartRateAlertVolumeChange = viewModel::updateHeartRateAlertVolume,
-                            onBackClick = {
-                                viewModel.stopHeartRateScan()
-                                isSettingsScreenVisible = false
-                            },
-                        )
+                        if (activeMainTab == MainTimerTab.Interval) {
+                            IntervalSettingsScreen(
+                                uiState = displayState,
+                                heartRateUiState = heartRateUiState,
+                                modifier = Modifier.padding(innerPadding),
+                                onFastPhaseDurationChange = viewModel::updateFastPhaseDurationSeconds,
+                                onSlowPhaseDurationChange = viewModel::updateSlowPhaseDurationSeconds,
+                                onAnnouncementVolumeChange = viewModel::updateAnnouncementVolume,
+                                onBeepVolumeChange = viewModel::updateBeepVolume,
+                                onVibrationEnabledChange = viewModel::updateVibrationEnabled,
+                                onFastPhaseBeepPitchChange = viewModel::updateFastPhaseBeepPitchPreset,
+                                onSlowPhaseBeepPitchChange = viewModel::updateSlowPhaseBeepPitchPreset,
+                                onFastPhaseBeepIntervalChange = viewModel::updateFastPhaseBeepIntervalSeconds,
+                                onSlowPhaseBeepIntervalChange = viewModel::updateSlowPhaseBeepIntervalSeconds,
+                                onStartHeartRateScan = startHeartRateScan,
+                                onReconnectSavedDevice = viewModel::connectSavedHeartRateDevice,
+                                onConnectHeartRateDevice = viewModel::connectHeartRateDevice,
+                                onDisconnectHeartRateDevice = viewModel::disconnectHeartRateDevice,
+                                onForgetHeartRateDevice = viewModel::forgetHeartRateDevice,
+                                onHeartRateSettingsChange = viewModel::updateHeartRateSettings,
+                                onHeartRateAlertVolumeChange = viewModel::updateHeartRateAlertVolume,
+                                onBackClick = {
+                                    viewModel.stopHeartRateScan()
+                                    isSettingsScreenVisible = false
+                                },
+                            )
+                        } else {
+                            NormalSettingsScreen(
+                                heartRateUiState = heartRateUiState,
+                                modifier = Modifier.padding(innerPadding),
+                                onStartHeartRateScan = startHeartRateScan,
+                                onReconnectSavedDevice = viewModel::connectSavedHeartRateDevice,
+                                onConnectHeartRateDevice = viewModel::connectHeartRateDevice,
+                                onDisconnectHeartRateDevice = viewModel::disconnectHeartRateDevice,
+                                onForgetHeartRateDevice = viewModel::forgetHeartRateDevice,
+                                onHeartRateSettingsChange = viewModel::updateHeartRateSettings,
+                                onHeartRateAlertVolumeChange = viewModel::updateHeartRateAlertVolume,
+                                onBackClick = {
+                                    viewModel.stopHeartRateScan()
+                                    isSettingsScreenVisible = false
+                                },
+                            )
+                        }
                     } else {
                         MainTimerScreen(
                             uiState = displayState,
@@ -153,6 +172,7 @@ class MainActivity : ComponentActivity() {
                             onOpenOverlaySettingsClick = ::openOverlaySettings,
                             onOpenSettingsClick = { isSettingsScreenVisible = true },
                             onGraphModeSelected = viewModel::setHeartRateGraphMode,
+                            onTabSelected = { activeMainTab = it },
                         )
                     }
                 }
@@ -245,9 +265,11 @@ private fun MainTimerScreen(
     onOpenOverlaySettingsClick: () -> Unit,
     onOpenSettingsClick: () -> Unit,
     onGraphModeSelected: (HeartRateGraphMode) -> Unit,
+    onTabSelected: (MainTimerTab) -> Unit,
 ) {
     var selectedTab by rememberSaveable { mutableStateOf(MainTimerTab.Interval) }
     LaunchedEffect(selectedTab) {
+        onTabSelected(selectedTab)
         onGraphModeSelected(
             if (selectedTab == MainTimerTab.Interval) {
                 HeartRateGraphMode.Interval
@@ -530,7 +552,7 @@ private fun NormalTimerScreen(
 }
 
 @Composable
-private fun SettingsScreen(
+private fun IntervalSettingsScreen(
     uiState: TimerUiState,
     heartRateUiState: HeartRateUiState,
     modifier: Modifier = Modifier,
@@ -718,6 +740,70 @@ private fun SettingsScreen(
 private enum class SettingsTab(val titleResId: Int) {
     HeartRate(R.string.heart_rate_settings_title),
     Timer(R.string.settings_timer_tab),
+}
+
+@Composable
+private fun NormalSettingsScreen(
+    heartRateUiState: HeartRateUiState,
+    modifier: Modifier = Modifier,
+    onStartHeartRateScan: () -> Unit,
+    onReconnectSavedDevice: () -> Unit,
+    onConnectHeartRateDevice: (String) -> Unit,
+    onDisconnectHeartRateDevice: () -> Unit,
+    onForgetHeartRateDevice: () -> Unit,
+    onHeartRateSettingsChange: (
+        targetLowerBpm: Int,
+        targetUpperBpm: Int,
+        dangerThresholdBpm: Int,
+        alertsEnabled: Boolean,
+        confirmSeconds: Int,
+        alertPhaseMode: HeartRateAlertPhaseMode,
+    ) -> Unit,
+    onHeartRateAlertVolumeChange: (Float) -> Unit,
+    onBackClick: () -> Unit,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(horizontal = 24.dp),
+        verticalArrangement = Arrangement.Top,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Spacer(modifier = Modifier.height(12.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.heart_rate_settings_title),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+            )
+            Button(onClick = onBackClick) {
+                Text(text = stringResource(R.string.settings_close))
+            }
+        }
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .verticalScroll(rememberScrollState()),
+        ) {
+            Spacer(modifier = Modifier.height(12.dp))
+            HeartRateSettingsSection(
+                state = heartRateUiState,
+                onStartScan = onStartHeartRateScan,
+                onReconnectSavedDevice = onReconnectSavedDevice,
+                onConnectDevice = onConnectHeartRateDevice,
+                onDisconnect = onDisconnectHeartRateDevice,
+                onForgetDevice = onForgetHeartRateDevice,
+                onSettingsChange = onHeartRateSettingsChange,
+                onAlertVolumeChange = onHeartRateAlertVolumeChange,
+            )
+            Spacer(modifier = Modifier.height(24.dp))
+        }
+    }
 }
 
 private enum class MainTimerTab(val titleResId: Int) {
@@ -967,6 +1053,7 @@ private fun TimerScreenPreview() {
             onOpenOverlaySettingsClick = {},
             onOpenSettingsClick = {},
             onGraphModeSelected = {},
+            onTabSelected = {},
         )
     }
 }

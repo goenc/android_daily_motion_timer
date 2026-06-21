@@ -25,49 +25,84 @@ class HeartRatePreferences(context: Context) {
         preferences.edit().remove(KEY_DEVICE_NAME).remove(KEY_DEVICE_ADDRESS).apply()
     }
 
-    fun loadSettings(): HeartRateSettings {
+    fun loadSelectedMode(): HeartRateGraphMode {
+        val rawMode = preferences.getString(KEY_SELECTED_MODE, HeartRateGraphMode.Interval.name)
+        return HeartRateGraphMode.entries.firstOrNull { it.name == rawMode } ?: HeartRateGraphMode.Interval
+    }
+
+    fun saveSelectedMode(mode: HeartRateGraphMode) {
+        preferences.edit()
+            .putString(KEY_SELECTED_MODE, mode.name)
+            .apply()
+    }
+
+    fun loadSettings(mode: HeartRateGraphMode): HeartRateSettings {
+        val targetLowerKey = scopedKey(KEY_TARGET_LOWER_BPM, mode)
+        val targetUpperKey = scopedKey(KEY_TARGET_UPPER_BPM, mode)
+        val dangerThresholdKey = scopedKey(KEY_DANGER_THRESHOLD_BPM, mode)
+        val alertsEnabledKey = scopedKey(KEY_ALERTS_ENABLED, mode)
+        val confirmSecondsKey = scopedKey(KEY_CONFIRM_SECONDS, mode)
+        val alertPhaseModeKey = scopedKey(KEY_ALERT_PHASE_MODE, mode)
+        val alertVolumeKey = scopedKey(KEY_ALERT_VOLUME, mode)
         val targetLower = preferences.getInt(
-            KEY_TARGET_LOWER_BPM,
+            targetLowerKey,
             HeartRateSettings().targetLowerBpm,
-        ).coerceIn(MIN_HEART_RATE_THRESHOLD_BPM, MAX_HEART_RATE_THRESHOLD_BPM - 2)
+        ).takeIf { preferences.contains(targetLowerKey) }
+            ?: legacyInt(KEY_TARGET_LOWER_BPM, HeartRateSettings().targetLowerBpm)
+        val normalizedTargetLower = targetLower.coerceIn(MIN_HEART_RATE_THRESHOLD_BPM, MAX_HEART_RATE_THRESHOLD_BPM - 2)
         val targetUpper = preferences.getInt(
-            KEY_TARGET_UPPER_BPM,
+            targetUpperKey,
             HeartRateSettings().targetUpperBpm,
-        ).coerceIn(targetLower + 1, MAX_HEART_RATE_THRESHOLD_BPM - 1)
+        ).takeIf { preferences.contains(targetUpperKey) }
+            ?: legacyInt(KEY_TARGET_UPPER_BPM, HeartRateSettings().targetUpperBpm)
+        val normalizedTargetUpper = targetUpper.coerceIn(normalizedTargetLower + 1, MAX_HEART_RATE_THRESHOLD_BPM - 1)
         val dangerThreshold = preferences.getInt(
-            KEY_DANGER_THRESHOLD_BPM,
+            dangerThresholdKey,
             HeartRateSettings().dangerThresholdBpm,
-        ).coerceIn(targetUpper + 1, MAX_HEART_RATE_THRESHOLD_BPM)
+        ).takeIf { preferences.contains(dangerThresholdKey) }
+            ?: legacyInt(KEY_DANGER_THRESHOLD_BPM, HeartRateSettings().dangerThresholdBpm)
+        val normalizedDangerThreshold = dangerThreshold.coerceIn(normalizedTargetUpper + 1, MAX_HEART_RATE_THRESHOLD_BPM)
+        val rawAlertPhaseMode = if (preferences.contains(alertPhaseModeKey)) {
+            preferences.getString(alertPhaseModeKey, HeartRateSettings().alertPhaseMode.name)
+        } else {
+            preferences.getString(KEY_ALERT_PHASE_MODE, HeartRateSettings().alertPhaseMode.name)
+        }
         return HeartRateSettings(
-            targetLowerBpm = targetLower,
-            targetUpperBpm = targetUpper,
-            dangerThresholdBpm = dangerThreshold,
-            alertsEnabled = preferences.getBoolean(KEY_ALERTS_ENABLED, true),
+            targetLowerBpm = normalizedTargetLower,
+            targetUpperBpm = normalizedTargetUpper,
+            dangerThresholdBpm = normalizedDangerThreshold,
+            alertsEnabled = preferences.getBoolean(
+                alertsEnabledKey,
+                legacyBoolean(KEY_ALERTS_ENABLED, true),
+            ),
             confirmSeconds = preferences.getInt(
-                KEY_CONFIRM_SECONDS,
+                confirmSecondsKey,
                 HeartRateSettings().confirmSeconds,
-            ).coerceIn(MIN_CONFIRM_SECONDS, MAX_CONFIRM_SECONDS),
-            alertPhaseMode = preferences.getString(
-                KEY_ALERT_PHASE_MODE,
-                HeartRateSettings().alertPhaseMode.name,
-            )?.let {
+            ).takeIf { preferences.contains(confirmSecondsKey) }
+                ?: legacyInt(KEY_CONFIRM_SECONDS, HeartRateSettings().confirmSeconds)
+                    .coerceIn(MIN_CONFIRM_SECONDS, MAX_CONFIRM_SECONDS),
+            alertPhaseMode = rawAlertPhaseMode?.let {
                 HeartRateAlertPhaseMode.entries.firstOrNull { mode -> mode.name == it }
             } ?: HeartRateSettings().alertPhaseMode,
             alertVolume = normalizeHeartRateAlertVolume(
-                preferences.getFloat(KEY_ALERT_VOLUME, HeartRateSettings().alertVolume),
+                if (preferences.contains(alertVolumeKey)) {
+                    preferences.getFloat(alertVolumeKey, HeartRateSettings().alertVolume)
+                } else {
+                    preferences.getFloat(KEY_ALERT_VOLUME, HeartRateSettings().alertVolume)
+                },
             ),
         )
     }
 
-    fun saveSettings(settings: HeartRateSettings) {
+    fun saveSettings(mode: HeartRateGraphMode, settings: HeartRateSettings) {
         preferences.edit()
-            .putInt(KEY_TARGET_LOWER_BPM, settings.targetLowerBpm)
-            .putInt(KEY_TARGET_UPPER_BPM, settings.targetUpperBpm)
-            .putInt(KEY_DANGER_THRESHOLD_BPM, settings.dangerThresholdBpm)
-            .putBoolean(KEY_ALERTS_ENABLED, settings.alertsEnabled)
-            .putInt(KEY_CONFIRM_SECONDS, settings.confirmSeconds)
-            .putString(KEY_ALERT_PHASE_MODE, settings.alertPhaseMode.name)
-            .putFloat(KEY_ALERT_VOLUME, normalizeHeartRateAlertVolume(settings.alertVolume))
+            .putInt(scopedKey(KEY_TARGET_LOWER_BPM, mode), settings.targetLowerBpm)
+            .putInt(scopedKey(KEY_TARGET_UPPER_BPM, mode), settings.targetUpperBpm)
+            .putInt(scopedKey(KEY_DANGER_THRESHOLD_BPM, mode), settings.dangerThresholdBpm)
+            .putBoolean(scopedKey(KEY_ALERTS_ENABLED, mode), settings.alertsEnabled)
+            .putInt(scopedKey(KEY_CONFIRM_SECONDS, mode), settings.confirmSeconds)
+            .putString(scopedKey(KEY_ALERT_PHASE_MODE, mode), settings.alertPhaseMode.name)
+            .putFloat(scopedKey(KEY_ALERT_VOLUME, mode), normalizeHeartRateAlertVolume(settings.alertVolume))
             .apply()
     }
 
@@ -75,6 +110,7 @@ class HeartRatePreferences(context: Context) {
         const val PREFERENCES_NAME = "heart_rate_monitor"
         const val KEY_DEVICE_NAME = "device_name"
         const val KEY_DEVICE_ADDRESS = "device_address"
+        const val KEY_SELECTED_MODE = "selected_mode"
         const val KEY_TARGET_LOWER_BPM = "target_lower_bpm"
         const val KEY_TARGET_UPPER_BPM = "target_upper_bpm"
         const val KEY_DANGER_THRESHOLD_BPM = "danger_threshold_bpm"
@@ -82,5 +118,17 @@ class HeartRatePreferences(context: Context) {
         const val KEY_CONFIRM_SECONDS = "confirm_seconds"
         const val KEY_ALERT_PHASE_MODE = "alert_phase_mode"
         const val KEY_ALERT_VOLUME = "alert_volume"
+    }
+
+    private fun scopedKey(baseKey: String, mode: HeartRateGraphMode): String {
+        return "${mode.name.lowercase()}_$baseKey"
+    }
+
+    private fun legacyInt(key: String, defaultValue: Int): Int {
+        return preferences.getInt(key, defaultValue)
+    }
+
+    private fun legacyBoolean(key: String, defaultValue: Boolean): Boolean {
+        return preferences.getBoolean(key, defaultValue)
     }
 }

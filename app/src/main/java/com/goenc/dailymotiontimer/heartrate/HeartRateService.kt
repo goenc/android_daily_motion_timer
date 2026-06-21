@@ -45,7 +45,7 @@ class HeartRateService : Service(), TextToSpeech.OnInitListener {
     override fun onCreate() {
         super.onCreate()
         preferences = HeartRatePreferences(this)
-        val settings = preferences.loadSettings()
+        val settings = preferences.loadSettings(preferences.loadSelectedMode())
         rule = HeartRateZoneCalculator.buildRule(settings)
         alertVolume = settings.alertVolume
         textToSpeech = TextToSpeech(applicationContext, this)
@@ -74,7 +74,7 @@ class HeartRateService : Service(), TextToSpeech.OnInitListener {
             ACTION_DISCONNECT -> disconnectAndStop(clearDevice = false)
             ACTION_FORGET_DEVICE -> disconnectAndStop(clearDevice = true)
             ACTION_UPDATE_SETTINGS -> {
-                val settings = preferences.loadSettings()
+                val settings = preferences.loadSettings(preferences.loadSelectedMode())
                 alertVolume = settings.alertVolume
                 alertEngine.updateSettings(settings)
             }
@@ -228,7 +228,7 @@ class HeartRateService : Service(), TextToSpeech.OnInitListener {
         if (!timerState.isRunning) {
             return false
         }
-        return preferences.loadSettings().alertPhaseMode.shouldAnnounce(timerState.currentPhase)
+        return preferences.loadSettings(preferences.loadSelectedMode()).alertPhaseMode.shouldAnnounce(timerState.currentPhase)
     }
 
     private fun currentTimerState(): TimerUiState? {

@@ -18,12 +18,16 @@ object HeartRateController {
     val uiState: StateFlow<HeartRateUiState> = _uiState.asStateFlow()
     private var scanner: HeartRateScanner? = null
     private var initialized = false
+    private var applicationContext: Context? = null
 
     fun initialize(context: Context) {
         if (initialized) return
+        applicationContext = context.applicationContext
         val preferences = HeartRatePreferences(context.applicationContext)
-        val settings = preferences.loadSettings()
+        val selectedMode = preferences.loadSelectedMode()
+        val settings = preferences.loadSettings(selectedMode)
         _uiState.value = _uiState.value.copy(
+            selectedGraphMode = selectedMode,
             savedDevice = preferences.loadDevice(),
             settings = settings,
             rule = HeartRateZoneCalculator.buildRule(settings),
@@ -95,9 +99,7 @@ object HeartRateController {
 
     fun forgetDevice(context: Context) {
         HeartRatePreferences(context).clearDevice()
-        _uiState.value = HeartRateUiState(settings = _uiState.value.settings).copy(
-            rule = HeartRateZoneCalculator.buildRule(_uiState.value.settings),
-        )
+        _uiState.value = _uiState.value.copy(savedDevice = null)
         context.startService(HeartRateService.createIntent(context, HeartRateService.ACTION_FORGET_DEVICE))
     }
 
@@ -130,7 +132,7 @@ object HeartRateController {
             confirmSeconds = confirmSeconds.coerceIn(MIN_CONFIRM_SECONDS, MAX_CONFIRM_SECONDS),
             alertPhaseMode = alertPhaseMode,
         )
-        HeartRatePreferences(context).saveSettings(settings)
+        HeartRatePreferences(context).saveSettings(_uiState.value.selectedGraphMode, settings)
         _uiState.value = _uiState.value.copy(
             settings = settings,
             rule = HeartRateZoneCalculator.buildRule(settings),
@@ -150,7 +152,7 @@ object HeartRateController {
         val settings = _uiState.value.settings.copy(
             alertVolume = normalizeHeartRateAlertVolume(volume),
         )
-        HeartRatePreferences(context).saveSettings(settings)
+        HeartRatePreferences(context).saveSettings(_uiState.value.selectedGraphMode, settings)
         _uiState.value = _uiState.value.copy(settings = settings)
         if (
             _uiState.value.connectionState == HeartRateConnectionState.CONNECTED ||
@@ -161,7 +163,25 @@ object HeartRateController {
     }
 
     fun setGraphMode(mode: HeartRateGraphMode) {
-        _uiState.value = _uiState.value.copy(selectedGraphMode = mode)
+        val context = checkNotNull(applicationContext) { "HeartRateController is not initialized" }
+        val preferences = HeartRatePreferences(
+            context = context,
+        )
+        preferences.saveSelectedMode(mode)
+        val settings = preferences.loadSettings(mode)
+        _uiState.value = _uiState.value.copy(
+            selectedGraphMode = mode,
+            settings = settings,
+            rule = HeartRateZoneCalculator.buildRule(settings),
+            zone = null,
+            averageHeartRate = null,
+        )
+        if (
+            _uiState.value.connectionState == HeartRateConnectionState.CONNECTED ||
+            _uiState.value.connectionState == HeartRateConnectionState.CONNECTING
+        ) {
+            context.startService(HeartRateService.createIntent(context, HeartRateService.ACTION_UPDATE_SETTINGS))
+        }
     }
 
     fun reportPermissionDenied() {
