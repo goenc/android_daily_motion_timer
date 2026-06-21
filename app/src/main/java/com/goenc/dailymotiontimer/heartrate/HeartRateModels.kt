@@ -62,6 +62,7 @@ data class HeartRateDevice(
 data class HeartRateGraphSample(
     val heartRate: Int,
     val timestampMs: Long,
+    val hasMeasurement: Boolean,
 )
 
 data class HeartRatePhaseSample(

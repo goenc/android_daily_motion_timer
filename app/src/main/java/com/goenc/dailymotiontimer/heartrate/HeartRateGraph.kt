@@ -24,7 +24,7 @@ import androidx.compose.ui.unit.dp
 import com.goenc.dailymotiontimer.R
 import com.goenc.dailymotiontimer.WalkingPhase
 
-private const val GRAPH_MIN_BPM = 50
+private const val GRAPH_MIN_BPM = 0
 private const val GRAPH_MAX_BPM = 150
 private const val GRAPH_WINDOW_MS = 10 * 60 * 1_000L
 private val FAST_PHASE_BACKGROUND = Color(0x55FFA726)
@@ -38,7 +38,8 @@ fun HeartRateGraph(
 ) {
     val gridColor = MaterialTheme.colorScheme.outlineVariant
     val lineColor = MaterialTheme.colorScheme.primary
-    val latestHeartRate = samples.lastOrNull()?.heartRate
+    val measuredSamples = samples.filter { it.hasMeasurement }
+    val latestHeartRate = measuredSamples.lastOrNull()?.heartRate
     val graphDescription = latestHeartRate?.let {
         stringResource(R.string.heart_rate_graph_description, it)
     } ?: stringResource(R.string.heart_rate_graph_waiting)
@@ -98,6 +99,9 @@ fun HeartRateGraph(
                     val latestTime = samples.last().timestampMs
                     val startTime = latestTime - GRAPH_WINDOW_MS
                     samples.zipWithNext().forEach { (from, to) ->
+                        if (!from.hasMeasurement || !to.hasMeasurement) {
+                            return@forEach
+                        }
                         drawLine(
                             color = lineColor,
                             start = graphPoint(from, startTime, size.width, size.height),
@@ -106,15 +110,17 @@ fun HeartRateGraph(
                             cap = StrokeCap.Round,
                         )
                     }
-                    drawCircle(
-                        color = lineColor,
-                        radius = 1.5.dp.toPx(),
-                        center = graphPoint(samples.last(), startTime, size.width, size.height),
-                    )
+                    measuredSamples.lastOrNull()?.let { latestSample ->
+                        drawCircle(
+                            color = lineColor,
+                            radius = 1.5.dp.toPx(),
+                            center = graphPoint(latestSample, startTime, size.width, size.height),
+                        )
+                    }
                 }
                 Text("$GRAPH_MAX_BPM", style = MaterialTheme.typography.labelSmall, modifier = Modifier.align(Alignment.TopStart))
                 Text("$GRAPH_MIN_BPM", style = MaterialTheme.typography.labelSmall, modifier = Modifier.align(Alignment.BottomStart))
-                if (samples.isEmpty()) {
+                if (measuredSamples.isEmpty()) {
                     Text(
                         text = stringResource(R.string.heart_rate_graph_waiting),
                         modifier = Modifier.align(Alignment.Center),
