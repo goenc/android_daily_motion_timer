@@ -39,6 +39,7 @@ fun HeartRateGraph(
     val gridColor = MaterialTheme.colorScheme.outlineVariant
     val lineColor = MaterialTheme.colorScheme.primary
     val measuredSamples = samples.filter { it.hasMeasurement }
+    val measuredSegments = buildMeasuredSegments(samples)
     val latestHeartRate = measuredSamples.lastOrNull()?.heartRate
     val graphDescription = latestHeartRate?.let {
         stringResource(R.string.heart_rate_graph_description, it)
@@ -98,17 +99,16 @@ fun HeartRateGraph(
 
                     val latestTime = samples.last().timestampMs
                     val startTime = latestTime - GRAPH_WINDOW_MS
-                    samples.zipWithNext().forEach { (from, to) ->
-                        if (!from.hasMeasurement || !to.hasMeasurement) {
-                            return@forEach
+                    measuredSegments.forEach { segment ->
+                        segment.zipWithNext().forEach { (from, to) ->
+                            drawLine(
+                                color = lineColor,
+                                start = graphPoint(from, startTime, size.width, size.height),
+                                end = graphPoint(to, startTime, size.width, size.height),
+                                strokeWidth = 3.dp.toPx(),
+                                cap = StrokeCap.Round,
+                            )
                         }
-                        drawLine(
-                            color = lineColor,
-                            start = graphPoint(from, startTime, size.width, size.height),
-                            end = graphPoint(to, startTime, size.width, size.height),
-                            strokeWidth = 3.dp.toPx(),
-                            cap = StrokeCap.Round,
-                        )
                     }
                     measuredSamples.lastOrNull()?.let { latestSample ->
                         drawCircle(
@@ -152,6 +152,26 @@ private fun graphPoint(
     val yRatio = (sample.heartRate.coerceIn(GRAPH_MIN_BPM, GRAPH_MAX_BPM) - GRAPH_MIN_BPM).toFloat() /
         (GRAPH_MAX_BPM - GRAPH_MIN_BPM)
     return Offset(width * xRatio, height * (1f - yRatio))
+}
+
+private fun buildMeasuredSegments(samples: List<HeartRateGraphSample>): List<List<HeartRateGraphSample>> {
+    if (samples.isEmpty()) {
+        return emptyList()
+    }
+    val segments = mutableListOf<List<HeartRateGraphSample>>()
+    var currentSegment = mutableListOf<HeartRateGraphSample>()
+    samples.forEach { sample ->
+        if (sample.hasMeasurement) {
+            currentSegment += sample
+        } else if (currentSegment.isNotEmpty()) {
+            segments += currentSegment.toList()
+            currentSegment = mutableListOf()
+        }
+    }
+    if (currentSegment.isNotEmpty()) {
+        segments += currentSegment.toList()
+    }
+    return segments
 }
 
 private fun buildPhaseSpans(
