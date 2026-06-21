@@ -87,8 +87,8 @@ class HeartRateAlertEngine(
                 HeartRateZone.LOW -> INTERVAL_LOW_HEART_RATE_ALERT_MESSAGE
                 HeartRateZone.TARGET -> "範囲内です"
                 HeartRateZone.HIGH -> "心拍が高めです"
-                HeartRateZone.TOO_HIGH -> "上がりすぎです。ペースを落としてください"
-                HeartRateZone.DANGER -> "心拍が高すぎます。停止してください"
+                HeartRateZone.TOO_HIGH -> INTERVAL_TOO_HIGH_HEART_RATE_ALERT_MESSAGE
+                HeartRateZone.DANGER -> INTERVAL_DANGER_HEART_RATE_ALERT_MESSAGE
             },
         )
         lastAlertAtMs = timestampMs

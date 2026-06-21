@@ -109,7 +109,11 @@ internal const val DEFAULT_HEART_RATE_ALERT_VOLUME = 1.0f
 internal const val MAX_HEART_RATE_ALERT_VOLUME = 2.0f
 
 internal const val INTERVAL_LOW_HEART_RATE_ALERT_MESSAGE = "心拍が低いです。少し上げてください"
+internal const val INTERVAL_TOO_HIGH_HEART_RATE_ALERT_MESSAGE = "上がりすぎです。ペースを落としてください"
+internal const val INTERVAL_DANGER_HEART_RATE_ALERT_MESSAGE = "心拍が高すぎます。停止してください"
 internal const val NORMAL_LOW_HEART_RATE_ALERT_MESSAGE = "心拍数が低いです"
+internal const val NORMAL_TOO_HIGH_HEART_RATE_ALERT_MESSAGE = "上限を超えています"
+internal const val NORMAL_DANGER_HEART_RATE_ALERT_MESSAGE = "高すぎて危険です"
 
 internal fun shouldEnableHeartRateAlerts(
     isNormalTimerRunning: Boolean,
@@ -134,10 +138,11 @@ internal fun resolveHeartRateAlertSpeechMessage(
     if (!isNormalTimerActive) {
         return alertMessage
     }
-    return if (alertMessage == INTERVAL_LOW_HEART_RATE_ALERT_MESSAGE) {
-        NORMAL_LOW_HEART_RATE_ALERT_MESSAGE
-    } else {
-        null
+    return when (alertMessage) {
+        INTERVAL_LOW_HEART_RATE_ALERT_MESSAGE -> NORMAL_LOW_HEART_RATE_ALERT_MESSAGE
+        INTERVAL_TOO_HIGH_HEART_RATE_ALERT_MESSAGE -> NORMAL_TOO_HIGH_HEART_RATE_ALERT_MESSAGE
+        INTERVAL_DANGER_HEART_RATE_ALERT_MESSAGE -> NORMAL_DANGER_HEART_RATE_ALERT_MESSAGE
+        else -> null
     }
 }
 

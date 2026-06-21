@@ -6,8 +6,12 @@ import com.goenc.dailymotiontimer.heartrate.HeartRateParser
 import com.goenc.dailymotiontimer.heartrate.HeartRateSettings
 import com.goenc.dailymotiontimer.heartrate.HeartRateZone
 import com.goenc.dailymotiontimer.heartrate.HeartRateZoneCalculator
+import com.goenc.dailymotiontimer.heartrate.INTERVAL_DANGER_HEART_RATE_ALERT_MESSAGE
 import com.goenc.dailymotiontimer.heartrate.INTERVAL_LOW_HEART_RATE_ALERT_MESSAGE
+import com.goenc.dailymotiontimer.heartrate.INTERVAL_TOO_HIGH_HEART_RATE_ALERT_MESSAGE
+import com.goenc.dailymotiontimer.heartrate.NORMAL_DANGER_HEART_RATE_ALERT_MESSAGE
 import com.goenc.dailymotiontimer.heartrate.NORMAL_LOW_HEART_RATE_ALERT_MESSAGE
+import com.goenc.dailymotiontimer.heartrate.NORMAL_TOO_HIGH_HEART_RATE_ALERT_MESSAGE
 import com.goenc.dailymotiontimer.heartrate.resolveHeartRateAlertSpeechMessage
 import com.goenc.dailymotiontimer.heartrate.shouldEnableHeartRateAlerts
 import com.goenc.dailymotiontimer.WalkingPhase
@@ -74,7 +78,7 @@ class HeartRateTest {
         engine.onHeartRateSample(140, timestampMs = 1_000L)
         engine.onHeartRateSample(140, timestampMs = 11_000L)
 
-        assertEquals(listOf("上がりすぎです。ペースを落としてください"), alerts)
+        assertEquals(listOf(INTERVAL_TOO_HIGH_HEART_RATE_ALERT_MESSAGE), alerts)
     }
 
     @Test
@@ -118,7 +122,7 @@ class HeartRateTest {
     }
 
     @Test
-    fun normalTimerSuppressesNonLowAlertSpeech() {
+    fun normalTimerMapsLowTooHighAndDangerAlertSpeech() {
         assertEquals(
             NORMAL_LOW_HEART_RATE_ALERT_MESSAGE,
             resolveHeartRateAlertSpeechMessage(
@@ -126,9 +130,23 @@ class HeartRateTest {
                 isNormalTimerActive = true,
             ),
         )
+        assertEquals(
+            NORMAL_TOO_HIGH_HEART_RATE_ALERT_MESSAGE,
+            resolveHeartRateAlertSpeechMessage(
+                alertMessage = INTERVAL_TOO_HIGH_HEART_RATE_ALERT_MESSAGE,
+                isNormalTimerActive = true,
+            ),
+        )
+        assertEquals(
+            NORMAL_DANGER_HEART_RATE_ALERT_MESSAGE,
+            resolveHeartRateAlertSpeechMessage(
+                alertMessage = INTERVAL_DANGER_HEART_RATE_ALERT_MESSAGE,
+                isNormalTimerActive = true,
+            ),
+        )
         assertNull(
             resolveHeartRateAlertSpeechMessage(
-                alertMessage = "上がりすぎです。ペースを落としてください",
+                alertMessage = "心拍が高めです",
                 isNormalTimerActive = true,
             ),
         )
