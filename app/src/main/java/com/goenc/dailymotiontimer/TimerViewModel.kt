@@ -2,14 +2,19 @@ package com.goenc.dailymotiontimer
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
+import android.os.SystemClock
 import com.goenc.dailymotiontimer.heartrate.HeartRateAlertPhaseMode
 import com.goenc.dailymotiontimer.heartrate.HeartRateController
 import com.goenc.dailymotiontimer.heartrate.HeartRateUiState
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 class TimerViewModel(application: Application) : AndroidViewModel(application) {
     val uiState: StateFlow<TimerUiState> = WalkingTimerController.uiState
     val heartRateUiState: StateFlow<HeartRateUiState> = HeartRateController.uiState
+    private val _normalTimerUiState = MutableStateFlow(NormalTimerUiState())
+    val normalTimerUiState: StateFlow<NormalTimerUiState> = _normalTimerUiState.asStateFlow()
 
     init {
         WalkingTimerController.restoreState(getApplication())
@@ -17,6 +22,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun startOrResume() {
+        stopNormalTimer()
         WalkingTimerController.startOrResume(getApplication())
     }
 
@@ -26,6 +32,51 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun stop() {
         WalkingTimerController.stop(getApplication())
+    }
+
+    fun startOrResumeNormalTimer() {
+        if (uiState.value.isActive) {
+            WalkingTimerController.stop(getApplication())
+        }
+        val nowElapsedRealtime = SystemClock.elapsedRealtime()
+        val currentState = _normalTimerUiState.value.resolveAt(nowElapsedRealtime)
+        val updatedState = when {
+            currentState.isRunning -> currentState
+            currentState.isPaused -> currentState.copy(
+                isRunning = true,
+                isPaused = false,
+                accumulatedPauseMillis = currentState.accumulatedPauseMillis +
+                    (nowElapsedRealtime - currentState.pauseStartedElapsedRealtime).coerceAtLeast(0L),
+                pauseStartedElapsedRealtime = 0L,
+            )
+
+            else -> currentState.copy(
+                isRunning = true,
+                isPaused = false,
+                sessionStartElapsedRealtime = nowElapsedRealtime,
+                accumulatedPauseMillis = 0L,
+                pauseStartedElapsedRealtime = 0L,
+                elapsedSeconds = 0,
+            )
+        }
+        _normalTimerUiState.value = updatedState.resolveAt(nowElapsedRealtime)
+    }
+
+    fun pauseNormalTimer() {
+        val nowElapsedRealtime = SystemClock.elapsedRealtime()
+        val currentState = _normalTimerUiState.value.resolveAt(nowElapsedRealtime)
+        if (!currentState.isRunning) {
+            return
+        }
+        _normalTimerUiState.value = currentState.copy(
+            isRunning = false,
+            isPaused = true,
+            pauseStartedElapsedRealtime = nowElapsedRealtime,
+        )
+    }
+
+    fun stopNormalTimer() {
+        _normalTimerUiState.value = NormalTimerUiState()
     }
 
     fun updateFastPhaseDurationSeconds(durationSeconds: Int) {

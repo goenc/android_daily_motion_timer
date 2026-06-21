@@ -77,8 +77,10 @@ class MainActivity : ComponentActivity() {
             WorkoutFlowTimerTheme {
                 NotificationPermissionEffect()
                 val uiState by viewModel.uiState.collectAsState()
+                val normalTimerUiState by viewModel.normalTimerUiState.collectAsState()
                 val heartRateUiState by viewModel.heartRateUiState.collectAsState()
                 val displayState = rememberDisplayState(uiState)
+                val normalDisplayState = rememberDisplayState(normalTimerUiState)
                 var isSettingsScreenVisible by rememberSaveable { mutableStateOf(false) }
                 val heartRatePermissionLauncher = rememberLauncherForActivityResult(
                     contract = ActivityResultContracts.RequestMultiplePermissions(),
@@ -126,18 +128,27 @@ class MainActivity : ComponentActivity() {
                             },
                         )
                     } else {
-                        TimerScreen(
+                        MainTimerScreen(
                             uiState = displayState,
+                            normalTimerUiState = normalDisplayState,
                             heartRateUiState = heartRateUiState,
                             modifier = Modifier.padding(innerPadding),
-                            onStartPauseClick = {
+                            onIntervalStartPauseClick = {
                                 if (displayState.isRunning) {
                                     viewModel.pause()
                                 } else {
                                     viewModel.startOrResume()
                                 }
                             },
-                            onStopClick = viewModel::stop,
+                            onIntervalStopClick = viewModel::stop,
+                            onNormalStartPauseClick = {
+                                if (normalDisplayState.isRunning) {
+                                    viewModel.pauseNormalTimer()
+                                } else {
+                                    viewModel.startOrResumeNormalTimer()
+                                }
+                            },
+                            onNormalStopClick = viewModel::stopNormalTimer,
                             onOpenOverlaySettingsClick = ::openOverlaySettings,
                             onOpenSettingsClick = { isSettingsScreenVisible = true },
                         )
@@ -187,6 +198,21 @@ private fun rememberDisplayState(uiState: TimerUiState): TimerUiState {
 }
 
 @Composable
+private fun rememberDisplayState(uiState: NormalTimerUiState): NormalTimerUiState {
+    val displayState by produceState(
+        initialValue = uiState.resolveAt(SystemClock.elapsedRealtime()),
+        uiState,
+    ) {
+        value = uiState.resolveAt(SystemClock.elapsedRealtime())
+        while (uiState.isRunning) {
+            delay(UI_REFRESH_INTERVAL_MILLIS)
+            value = uiState.resolveAt(SystemClock.elapsedRealtime())
+        }
+    }
+    return displayState
+}
+
+@Composable
 private fun CenteredElapsedTimeText(
     elapsedSeconds: Int,
     fontWeight: FontWeight,
@@ -205,7 +231,60 @@ private fun CenteredElapsedTimeText(
 }
 
 @Composable
-private fun TimerScreen(
+private fun MainTimerScreen(
+    uiState: TimerUiState,
+    normalTimerUiState: NormalTimerUiState,
+    heartRateUiState: HeartRateUiState,
+    modifier: Modifier = Modifier,
+    onIntervalStartPauseClick: () -> Unit,
+    onIntervalStopClick: () -> Unit,
+    onNormalStartPauseClick: () -> Unit,
+    onNormalStopClick: () -> Unit,
+    onOpenOverlaySettingsClick: () -> Unit,
+    onOpenSettingsClick: () -> Unit,
+) {
+    var selectedTab by rememberSaveable { mutableStateOf(MainTimerTab.Interval) }
+
+    Column(
+        modifier = modifier.fillMaxSize(),
+    ) {
+        TabRow(
+            selectedTabIndex = selectedTab.ordinal,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            MainTimerTab.entries.forEach { tab ->
+                Tab(
+                    selected = selectedTab == tab,
+                    onClick = { selectedTab = tab },
+                    text = { Text(text = stringResource(tab.titleResId)) },
+                )
+            }
+        }
+        when (selectedTab) {
+            MainTimerTab.Interval -> IntervalTimerScreen(
+                uiState = uiState,
+                heartRateUiState = heartRateUiState,
+                modifier = Modifier.weight(1f),
+                onStartPauseClick = onIntervalStartPauseClick,
+                onStopClick = onIntervalStopClick,
+                onOpenOverlaySettingsClick = onOpenOverlaySettingsClick,
+                onOpenSettingsClick = onOpenSettingsClick,
+            )
+
+            MainTimerTab.Normal -> NormalTimerScreen(
+                uiState = normalTimerUiState,
+                heartRateUiState = heartRateUiState,
+                modifier = Modifier.weight(1f),
+                onStartPauseClick = onNormalStartPauseClick,
+                onStopClick = onNormalStopClick,
+                onOpenSettingsClick = onOpenSettingsClick,
+            )
+        }
+    }
+}
+
+@Composable
+private fun IntervalTimerScreen(
     uiState: TimerUiState,
     heartRateUiState: HeartRateUiState,
     modifier: Modifier = Modifier,
@@ -291,6 +370,110 @@ private fun TimerScreen(
                 Text(text = stringResource(R.string.open_overlay_settings))
             }
         }
+        HeartRateGraph(
+            samples = heartRateUiState.heartRateHistory,
+            phaseSamples = heartRateUiState.phaseHistory,
+            modifier = Modifier.padding(top = 12.dp),
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Button(
+                onClick = onStartPauseClick,
+                modifier = Modifier
+                    .weight(1f)
+                    .height(64.dp),
+            ) {
+                Text(
+                    text = if (uiState.isRunning) {
+                        stringResource(R.string.pause)
+                    } else if (uiState.isPaused) {
+                        stringResource(R.string.resume)
+                    } else {
+                        stringResource(R.string.start)
+                    },
+                    style = MaterialTheme.typography.titleLarge,
+                )
+            }
+            Button(
+                onClick = onStopClick,
+                modifier = Modifier
+                    .weight(1f)
+                    .height(64.dp),
+            ) {
+                Text(
+                    text = stringResource(R.string.stop),
+                    style = MaterialTheme.typography.titleLarge,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun NormalTimerScreen(
+    uiState: NormalTimerUiState,
+    heartRateUiState: HeartRateUiState,
+    modifier: Modifier = Modifier,
+    onStartPauseClick: () -> Unit,
+    onStopClick: () -> Unit,
+    onOpenSettingsClick: () -> Unit,
+) {
+    val activeTextColor = if (uiState.isRunning) Color.Black else Color.Unspecified
+    val screenBackgroundColor = when {
+        uiState.isRunning -> Color(0xFFC8E6C9)
+        uiState.isPaused -> Color(0xFFFFE0B2)
+        else -> MaterialTheme.colorScheme.background
+    }
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(screenBackgroundColor)
+            .padding(horizontal = 24.dp)
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.Top,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(onClick = onOpenSettingsClick) {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_settings_24),
+                    contentDescription = stringResource(R.string.settings_title),
+                    tint = Color.Black,
+                )
+            }
+        }
+        Text(
+            text = stringResource(R.string.normal_timer_title),
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold,
+            color = activeTextColor,
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(
+            text = stringResource(R.string.elapsed_time_label),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = activeTextColor,
+        )
+        CenteredElapsedTimeText(
+            elapsedSeconds = uiState.elapsedSeconds,
+            fontWeight = FontWeight.Bold,
+            color = activeTextColor,
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        HeartRateStatus(
+            state = heartRateUiState,
+            textColor = activeTextColor,
+        )
+        Spacer(modifier = Modifier.height(12.dp))
         HeartRateGraph(
             samples = heartRateUiState.heartRateHistory,
             phaseSamples = heartRateUiState.phaseHistory,
@@ -525,6 +708,11 @@ private enum class SettingsTab(val titleResId: Int) {
     Timer(R.string.settings_timer_tab),
 }
 
+private enum class MainTimerTab(val titleResId: Int) {
+    Interval(R.string.main_tab_interval),
+    Normal(R.string.main_tab_normal),
+}
+
 @Composable
 private fun PhaseLogEntryView(entry: PhaseTransitionLogEntry) {
     Column(modifier = Modifier.fillMaxWidth()) {
@@ -756,11 +944,14 @@ private fun NotificationPermissionEffect() {
 @Composable
 private fun TimerScreenPreview() {
     WorkoutFlowTimerTheme {
-        TimerScreen(
+        MainTimerScreen(
             uiState = TimerUiState(),
+            normalTimerUiState = NormalTimerUiState(),
             heartRateUiState = HeartRateUiState(),
-            onStartPauseClick = {},
-            onStopClick = {},
+            onIntervalStartPauseClick = {},
+            onIntervalStopClick = {},
+            onNormalStartPauseClick = {},
+            onNormalStopClick = {},
             onOpenOverlaySettingsClick = {},
             onOpenSettingsClick = {},
         )

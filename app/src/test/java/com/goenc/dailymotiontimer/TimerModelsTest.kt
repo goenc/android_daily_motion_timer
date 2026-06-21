@@ -81,4 +81,26 @@ class TimerModelsTest {
         assertEquals("5:30", formatRemainingDuration(330))
         assertEquals("0:10", formatRemainingDuration(10))
     }
+
+    @Test
+    fun normalTimerUiState_resolveAtReflectsElapsedAndPause() {
+        val runningState = NormalTimerUiState(
+            isRunning = true,
+            sessionStartElapsedRealtime = 1_000L,
+        )
+
+        val resolvedRunningState = runningState.resolveAt(nowElapsedRealtime = 16_000L)
+        assertEquals(15, resolvedRunningState.elapsedSeconds)
+
+        val pausedState = NormalTimerUiState(
+            isRunning = false,
+            isPaused = true,
+            sessionStartElapsedRealtime = 1_000L,
+            accumulatedPauseMillis = 3_000L,
+            pauseStartedElapsedRealtime = 20_000L,
+        )
+
+        val resolvedPausedState = pausedState.resolveAt(nowElapsedRealtime = 40_000L)
+        assertEquals(16, resolvedPausedState.elapsedSeconds)
+    }
 }

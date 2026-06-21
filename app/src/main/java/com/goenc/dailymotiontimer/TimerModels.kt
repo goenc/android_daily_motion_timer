@@ -149,6 +149,35 @@ data class TimerUiState(
     }
 }
 
+data class NormalTimerUiState(
+    val elapsedSeconds: Int = 0,
+    val isRunning: Boolean = false,
+    val isPaused: Boolean = false,
+    val sessionStartElapsedRealtime: Long = 0L,
+    val accumulatedPauseMillis: Long = 0L,
+    val pauseStartedElapsedRealtime: Long = 0L,
+) {
+    val formattedElapsedTime: String
+        get() = formatElapsedDuration(elapsedSeconds)
+
+    val isActive: Boolean
+        get() = isRunning || isPaused
+
+    fun resolveAt(nowElapsedRealtime: Long): NormalTimerUiState {
+        val resolvedElapsedSeconds = elapsedSecondsFromMillis(
+            calculateElapsedActiveMillis(
+                nowElapsedRealtime = nowElapsedRealtime,
+                sessionStartElapsedRealtime = sessionStartElapsedRealtime,
+                accumulatedPauseMillis = accumulatedPauseMillis,
+                pauseStartedElapsedRealtime = pauseStartedElapsedRealtime,
+                isRunning = isRunning,
+                isPaused = isPaused,
+            ),
+        )
+        return copy(elapsedSeconds = resolvedElapsedSeconds)
+    }
+}
+
 data class PersistedTimerState(
     val sessionStartElapsedRealtime: Long,
     val accumulatedPauseMillis: Long,
