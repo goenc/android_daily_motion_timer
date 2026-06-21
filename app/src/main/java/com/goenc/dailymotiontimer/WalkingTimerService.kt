@@ -115,6 +115,15 @@ class WalkingTimerService : Service() {
         super.onDestroy()
     }
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        if (currentUiState().isActive) {
+            stopTimer()
+        } else {
+            stopSelf()
+        }
+        super.onTaskRemoved(rootIntent)
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     private fun startOrResumeTimer(): TimerUiState {

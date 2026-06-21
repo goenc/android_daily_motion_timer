@@ -69,8 +69,6 @@ import kotlin.math.roundToInt
 
 class MainActivity : ComponentActivity() {
     private val viewModel: TimerViewModel by viewModels()
-    private var shouldFinishOnStop = false
-    private var suppressFinishOnStop = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -157,30 +155,14 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        shouldFinishOnStop = false
-        suppressFinishOnStop = false
-    }
-
-    override fun onUserLeaveHint() {
-        shouldFinishOnStop = !suppressFinishOnStop
-        suppressFinishOnStop = false
-        super.onUserLeaveHint()
     }
 
     override fun onStop() {
-        viewModel.stopHeartRateScan()
         viewModel.setAppVisible(false)
-        if (!viewModel.uiState.value.isRunning) {
-            viewModel.disconnectHeartRateDevice()
-        }
         super.onStop()
-        if (shouldFinishOnStop && !isChangingConfigurations) {
-            finishAndRemoveTask()
-        }
     }
 
     private fun openOverlaySettings() {
-        suppressFinishOnStop = true
         val intent = Intent(
             Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
             Uri.parse("package:$packageName"),
