@@ -107,11 +107,25 @@ fun HeartRateSettingsSection(
             style = MaterialTheme.typography.bodyMedium,
         )
         state.savedDevice?.let { device ->
-            Text(
-                text = stringResource(R.string.heart_rate_saved_device, device.name),
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Bold,
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = stringResource(R.string.heart_rate_saved_device, device.name),
+                    modifier = Modifier.weight(1f).padding(end = 8.dp),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    text = state.batteryLevelPercent?.let {
+                        stringResource(R.string.heart_rate_battery_level, it)
+                    } ?: stringResource(R.string.heart_rate_battery_unavailable),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (state.savedDevice == null) {

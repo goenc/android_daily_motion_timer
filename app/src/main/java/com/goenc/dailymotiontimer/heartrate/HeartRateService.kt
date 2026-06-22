@@ -116,6 +116,13 @@ class HeartRateService : Service(), TextToSpeech.OnInitListener {
             onHeartRateChanged = { value ->
                 handler.post { handleHeartRate(attemptId, savedDevice, value) }
             },
+            onBatteryLevelChanged = { value ->
+                handler.post {
+                    if (attemptId == connectionAttemptId) {
+                        HeartRateController.publishBatteryLevel(value)
+                    }
+                }
+            },
         )
         client = newClient
         scheduleConnectionTimeout(attemptId)

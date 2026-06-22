@@ -1,5 +1,6 @@
 package com.goenc.dailymotiontimer
 
+import com.goenc.dailymotiontimer.heartrate.BatteryLevelParser
 import com.goenc.dailymotiontimer.heartrate.HeartRateAlertPhaseMode
 import com.goenc.dailymotiontimer.heartrate.HeartRateAlertEngine
 import com.goenc.dailymotiontimer.heartrate.HeartRateParser
@@ -21,6 +22,13 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class HeartRateTest {
+    @Test
+    fun batteryLevelParserAcceptsStandardPercentage() {
+        assertEquals(75, BatteryLevelParser.parse(byteArrayOf(75)))
+        assertNull(BatteryLevelParser.parse(byteArrayOf()))
+        assertNull(BatteryLevelParser.parse(byteArrayOf(101)))
+    }
+
     @Test
     fun walkRuleMatchesConfiguredThresholds() {
         val rule = HeartRateZoneCalculator.buildRule(

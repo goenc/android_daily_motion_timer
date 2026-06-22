@@ -201,8 +201,18 @@ object HeartRateController {
             heartRate = if (state == HeartRateConnectionState.CONNECTED) _uiState.value.heartRate else 0,
             averageHeartRate = if (state == HeartRateConnectionState.CONNECTED) _uiState.value.averageHeartRate else null,
             zone = if (state == HeartRateConnectionState.CONNECTED) _uiState.value.zone else null,
+            batteryLevelPercent = if (state == HeartRateConnectionState.CONNECTED) {
+                _uiState.value.batteryLevelPercent
+            } else {
+                null
+            },
             errorMessage = message,
         )
+    }
+
+    internal fun publishBatteryLevel(levelPercent: Int) {
+        if (_uiState.value.connectionState != HeartRateConnectionState.CONNECTED) return
+        _uiState.value = _uiState.value.copy(batteryLevelPercent = levelPercent.coerceIn(0, 100))
     }
 
     internal fun publishMeasurement(heartRate: Int, averageHeartRate: Int?, zone: HeartRateZone?, rule: HeartRateRule) {

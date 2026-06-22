@@ -97,6 +97,7 @@ data class HeartRateUiState(
     val normalGraphState: HeartRateGraphState = HeartRateGraphState(),
     val devices: List<HeartRateDevice> = emptyList(),
     val savedDevice: HeartRateDevice? = null,
+    val batteryLevelPercent: Int? = null,
     val settings: HeartRateSettings = HeartRateSettings(),
     val errorMessage: String? = null,
 )

@@ -47,6 +47,8 @@
     <string name="heart_rate_settings_title">心拍モニター</string>
     <string name="heart_rate_connection_state">接続状態: %1$s</string>
     <string name="heart_rate_saved_device">登録機器: %1$s</string>
+    <string name="heart_rate_battery_level">充電残量: %1$d%%</string>
+    <string name="heart_rate_battery_unavailable">充電残量: --</string>
     <string name="heart_rate_scan">機器を検索</string>
     <string name="heart_rate_connect">接続</string>
     <string name="heart_rate_reconnect">再接続</string>

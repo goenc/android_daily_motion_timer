@@ -18,6 +18,8 @@ internal object HeartRateBleConstants {
     val SERVICE_UUID: UUID = UUID.fromString("0000180d-0000-1000-8000-00805f9b34fb")
     val MEASUREMENT_UUID: UUID = UUID.fromString("00002a37-0000-1000-8000-00805f9b34fb")
     val CLIENT_CONFIG_UUID: UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
+    val BATTERY_SERVICE_UUID: UUID = UUID.fromString("0000180f-0000-1000-8000-00805f9b34fb")
+    val BATTERY_LEVEL_UUID: UUID = UUID.fromString("00002a19-0000-1000-8000-00805f9b34fb")
 }
 
 object HeartRateParser {
@@ -32,6 +34,10 @@ object HeartRateParser {
             value[1].toInt() and 0xFF
         }
     }
+}
+
+internal object BatteryLevelParser {
+    fun parse(value: ByteArray): Int? = value.firstOrNull()?.toInt()?.and(0xFF)?.takeIf { it <= 100 }
 }
 
 internal class HeartRateScanner(
@@ -80,6 +86,7 @@ internal class HeartRateBleClient(
     private val context: Context,
     private val onStateChanged: (HeartRateConnectionState, String?) -> Unit,
     private val onHeartRateChanged: (Int) -> Unit,
+    private val onBatteryLevelChanged: (Int) -> Unit,
 ) {
     private var gatt: BluetoothGatt? = null
 
@@ -125,8 +132,35 @@ internal class HeartRateBleClient(
             HeartRateParser.parse(value)?.let(onHeartRateChanged)
         }
 
+        @Deprecated("Android 13未満で使用")
+        @Suppress("DEPRECATION")
+        override fun onCharacteristicRead(
+            gatt: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic,
+            status: Int,
+        ) {
+            if (status == BluetoothGatt.GATT_SUCCESS && characteristic.uuid == HeartRateBleConstants.BATTERY_LEVEL_UUID) {
+                BatteryLevelParser.parse(characteristic.value)?.let(onBatteryLevelChanged)
+            }
+        }
+
+        override fun onCharacteristicRead(
+            gatt: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic,
+            value: ByteArray,
+            status: Int,
+        ) {
+            if (status == BluetoothGatt.GATT_SUCCESS && characteristic.uuid == HeartRateBleConstants.BATTERY_LEVEL_UUID) {
+                BatteryLevelParser.parse(value)?.let(onBatteryLevelChanged)
+            }
+        }
+
         override fun onDescriptorWrite(gatt: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
-            if (status != BluetoothGatt.GATT_SUCCESS) fail("心拍通知の設定エラー: $status")
+            if (status != BluetoothGatt.GATT_SUCCESS) {
+                fail("心拍通知の設定エラー: $status")
+                return
+            }
+            readBatteryLevel(gatt)
         }
     }
 
@@ -157,6 +191,14 @@ internal class HeartRateBleClient(
             @Suppress("DEPRECATION")
             gatt.writeDescriptor(descriptor)
         }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun readBatteryLevel(gatt: BluetoothGatt) {
+        val characteristic = gatt.getService(HeartRateBleConstants.BATTERY_SERVICE_UUID)
+            ?.getCharacteristic(HeartRateBleConstants.BATTERY_LEVEL_UUID)
+            ?: return
+        gatt.readCharacteristic(characteristic)
     }
 
     private fun fail(message: String) {
