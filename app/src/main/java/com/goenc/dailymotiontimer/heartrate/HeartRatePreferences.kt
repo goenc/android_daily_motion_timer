@@ -44,6 +44,7 @@ class HeartRatePreferences(context: Context) {
         val confirmSecondsKey = scopedKey(KEY_CONFIRM_SECONDS, mode)
         val alertPhaseModeKey = scopedKey(KEY_ALERT_PHASE_MODE, mode)
         val alertVolumeKey = scopedKey(KEY_ALERT_VOLUME, mode)
+        val normalReadingIntervalKey = scopedKey(KEY_NORMAL_READING_INTERVAL_SECONDS, mode)
         val targetLower = preferences.getInt(
             targetLowerKey,
             HeartRateSettings().targetLowerBpm,
@@ -91,6 +92,19 @@ class HeartRatePreferences(context: Context) {
                     preferences.getFloat(KEY_ALERT_VOLUME, HeartRateSettings().alertVolume)
                 },
             ),
+            normalReadingIntervalSeconds = normalizeHeartRateReadingIntervalSeconds(
+                if (preferences.contains(normalReadingIntervalKey)) {
+                    preferences.getInt(
+                        normalReadingIntervalKey,
+                        HeartRateSettings().normalReadingIntervalSeconds,
+                    )
+                } else {
+                    preferences.getInt(
+                        KEY_NORMAL_READING_INTERVAL_SECONDS,
+                        HeartRateSettings().normalReadingIntervalSeconds,
+                    )
+                },
+            ),
         )
     }
 
@@ -103,6 +117,10 @@ class HeartRatePreferences(context: Context) {
             .putInt(scopedKey(KEY_CONFIRM_SECONDS, mode), settings.confirmSeconds)
             .putString(scopedKey(KEY_ALERT_PHASE_MODE, mode), settings.alertPhaseMode.name)
             .putFloat(scopedKey(KEY_ALERT_VOLUME, mode), normalizeHeartRateAlertVolume(settings.alertVolume))
+            .putInt(
+                scopedKey(KEY_NORMAL_READING_INTERVAL_SECONDS, mode),
+                normalizeHeartRateReadingIntervalSeconds(settings.normalReadingIntervalSeconds),
+            )
             .apply()
     }
 
@@ -118,6 +136,7 @@ class HeartRatePreferences(context: Context) {
         const val KEY_CONFIRM_SECONDS = "confirm_seconds"
         const val KEY_ALERT_PHASE_MODE = "alert_phase_mode"
         const val KEY_ALERT_VOLUME = "alert_volume"
+        const val KEY_NORMAL_READING_INTERVAL_SECONDS = "normal_reading_interval_seconds"
     }
 
     private fun scopedKey(baseKey: String, mode: HeartRateGraphMode): String {

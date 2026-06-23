@@ -38,6 +38,7 @@ data class HeartRateSettings(
     val alertsEnabled: Boolean = true,
     val alertVolume: Float = DEFAULT_HEART_RATE_ALERT_VOLUME,
     val alertPhaseMode: HeartRateAlertPhaseMode = HeartRateAlertPhaseMode.FastOnly,
+    val normalReadingIntervalSeconds: Int = DEFAULT_HEART_RATE_READING_INTERVAL_SECONDS,
     val averageWindowSeconds: Int = 5,
     val confirmSeconds: Int = 10,
     val normalCooldownSeconds: Int = 30,
@@ -108,6 +109,8 @@ internal const val MIN_CONFIRM_SECONDS = 1
 internal const val MAX_CONFIRM_SECONDS = 90
 internal const val DEFAULT_HEART_RATE_ALERT_VOLUME = 1.0f
 internal const val MAX_HEART_RATE_ALERT_VOLUME = 2.0f
+internal val HEART_RATE_READING_INTERVAL_OPTIONS_SECONDS = listOf(30, 60, 90, 120)
+internal const val DEFAULT_HEART_RATE_READING_INTERVAL_SECONDS = 60
 
 internal const val INTERVAL_LOW_HEART_RATE_ALERT_MESSAGE = "心拍が低いです。少し上げてください"
 internal const val INTERVAL_TOO_HIGH_HEART_RATE_ALERT_MESSAGE = "上がりすぎです。ペースを落としてください"
@@ -190,4 +193,37 @@ internal fun heartRateAlertVolumeFromDisplayPercent(percent: Int): Float {
 
 internal fun heartRateAlertVolumeToSpeechVolume(volume: Float): Float {
     return normalizeHeartRateAlertVolume(volume).coerceAtMost(1.0f)
+}
+
+internal fun normalizeHeartRateReadingIntervalSeconds(seconds: Int): Int {
+    return if (seconds in HEART_RATE_READING_INTERVAL_OPTIONS_SECONDS) {
+        seconds
+    } else {
+        DEFAULT_HEART_RATE_READING_INTERVAL_SECONDS
+    }
+}
+
+internal fun formatHeartRateReadingInterval(seconds: Int): String {
+    return when (val normalized = normalizeHeartRateReadingIntervalSeconds(seconds)) {
+        30 -> "30秒ごと"
+        60 -> "1分ごと"
+        90 -> "1分30秒ごと"
+        120 -> "2分ごと"
+        else -> "${normalized}秒ごと"
+    }
+}
+
+internal fun nextNormalHeartRateReadingDelayMillis(
+    elapsedSeconds: Int,
+    intervalSeconds: Int,
+): Long {
+    val normalizedIntervalSeconds = normalizeHeartRateReadingIntervalSeconds(intervalSeconds)
+    val normalizedElapsedSeconds = elapsedSeconds.coerceAtLeast(0)
+    val remainder = normalizedElapsedSeconds % normalizedIntervalSeconds
+    val secondsUntilNextReading = if (remainder == 0) {
+        normalizedIntervalSeconds
+    } else {
+        normalizedIntervalSeconds - remainder
+    }
+    return secondsUntilNextReading * 1_000L
 }

@@ -64,6 +64,7 @@
     <string name="heart_rate_alert_confirm_seconds">警告判定秒数: %1$d秒</string>
     <string name="heart_rate_alert_phase_mode">読み上げタイミング</string>
     <string name="heart_rate_reading_toggle_title">読み上げ</string>
+    <string name="heart_rate_reading_interval_label">心拍読み上げ間隔</string>
     <string name="heart_rate_reading_enabled">読み上げる</string>
     <string name="heart_rate_reading_disabled">読み上げない</string>
 </resources>

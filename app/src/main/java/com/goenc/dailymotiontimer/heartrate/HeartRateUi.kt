@@ -77,6 +77,7 @@ fun HeartRateSettingsSection(
         targetUpperBpm: Int,
         dangerThresholdBpm: Int,
         alertsEnabled: Boolean,
+        normalReadingIntervalSeconds: Int,
         confirmSeconds: Int,
         alertPhaseMode: HeartRateAlertPhaseMode,
     ) -> Unit,
@@ -84,6 +85,7 @@ fun HeartRateSettingsSection(
     showVoiceAlertSwitch: Boolean = true,
     showAlertPhaseModeSelector: Boolean = true,
     showAlertToggleButtons: Boolean = false,
+    showReadingIntervalSelector: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     var targetLowerValue by remember(state.settings.targetLowerBpm) {
@@ -213,6 +215,7 @@ fun HeartRateSettingsSection(
                     normalizedTargetUpper,
                     normalizedDangerThreshold,
                     state.settings.alertsEnabled,
+                    state.settings.normalReadingIntervalSeconds,
                     normalizedConfirmSeconds,
                     state.settings.alertPhaseMode,
                 )
@@ -239,6 +242,7 @@ fun HeartRateSettingsSection(
                     normalizedTargetUpper,
                     normalizedDangerThreshold,
                     state.settings.alertsEnabled,
+                    state.settings.normalReadingIntervalSeconds,
                     normalizedConfirmSeconds,
                     state.settings.alertPhaseMode,
                 )
@@ -265,6 +269,7 @@ fun HeartRateSettingsSection(
                     normalizedTargetUpper,
                     normalizedDangerThreshold,
                     state.settings.alertsEnabled,
+                    state.settings.normalReadingIntervalSeconds,
                     normalizedConfirmSeconds,
                     state.settings.alertPhaseMode,
                 )
@@ -300,6 +305,7 @@ fun HeartRateSettingsSection(
                             normalizedTargetUpper,
                             normalizedDangerThreshold,
                             enabled,
+                            state.settings.normalReadingIntervalSeconds,
                             normalizedConfirmSeconds,
                             state.settings.alertPhaseMode,
                         )
@@ -311,6 +317,22 @@ fun HeartRateSettingsSection(
             alertVolume = state.settings.alertVolume,
             onVolumeChange = onAlertVolumeChange,
         )
+        if (showReadingIntervalSelector) {
+            HeartRateReadingIntervalSelector(
+                selectedIntervalSeconds = state.settings.normalReadingIntervalSeconds,
+                onIntervalChange = { intervalSeconds ->
+                    onSettingsChange(
+                        normalizedTargetLower,
+                        normalizedTargetUpper,
+                        normalizedDangerThreshold,
+                        state.settings.alertsEnabled,
+                        intervalSeconds,
+                        normalizedConfirmSeconds,
+                        state.settings.alertPhaseMode,
+                    )
+                },
+            )
+        }
         Text(
             text = stringResource(R.string.heart_rate_alert_confirm_seconds, normalizedConfirmSeconds),
             style = MaterialTheme.typography.titleSmall,
@@ -330,6 +352,7 @@ fun HeartRateSettingsSection(
                     normalizedTargetUpper,
                     normalizedDangerThreshold,
                     state.settings.alertsEnabled,
+                    state.settings.normalReadingIntervalSeconds,
                     normalizedConfirmSeconds,
                     state.settings.alertPhaseMode,
                 )
@@ -355,6 +378,7 @@ fun HeartRateSettingsSection(
                             normalizedTargetUpper,
                             normalizedDangerThreshold,
                             state.settings.alertsEnabled,
+                            state.settings.normalReadingIntervalSeconds,
                             normalizedConfirmSeconds,
                             mode,
                         )
@@ -395,6 +419,7 @@ fun HeartRateSettingsSection(
                         normalizedTargetUpper,
                         normalizedDangerThreshold,
                         enabled,
+                        state.settings.normalReadingIntervalSeconds,
                         normalizedConfirmSeconds,
                         state.settings.alertPhaseMode,
                     )
@@ -471,4 +496,41 @@ private fun HeartRateAlertVolumeSlider(
             modifier = Modifier.fillMaxWidth(),
         )
     }
+}
+
+@Composable
+private fun HeartRateReadingIntervalSelector(
+    selectedIntervalSeconds: Int,
+    onIntervalChange: (Int) -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = stringResource(
+                R.string.setting_summary,
+                stringResource(R.string.heart_rate_reading_interval_label),
+                formatHeartRateReadingInterval(selectedIntervalSeconds),
+            ),
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Bold,
+        )
+        Slider(
+            value = heartRateReadingIntervalSliderIndex(selectedIntervalSeconds).toFloat(),
+            onValueChange = { sliderValue ->
+                val optionIndex = sliderValue.roundToInt().coerceIn(
+                    0,
+                    HEART_RATE_READING_INTERVAL_OPTIONS_SECONDS.lastIndex,
+                )
+                onIntervalChange(HEART_RATE_READING_INTERVAL_OPTIONS_SECONDS[optionIndex])
+            },
+            valueRange = 0f..HEART_RATE_READING_INTERVAL_OPTIONS_SECONDS.lastIndex.toFloat(),
+            steps = HEART_RATE_READING_INTERVAL_OPTIONS_SECONDS.size - 2,
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
+private fun heartRateReadingIntervalSliderIndex(intervalSeconds: Int): Int {
+    return HEART_RATE_READING_INTERVAL_OPTIONS_SECONDS.indexOf(
+        normalizeHeartRateReadingIntervalSeconds(intervalSeconds),
+    ).coerceAtLeast(0)
 }

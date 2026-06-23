@@ -113,6 +113,7 @@ object HeartRateController {
         targetUpperBpm: Int,
         dangerThresholdBpm: Int,
         alertsEnabled: Boolean,
+        normalReadingIntervalSeconds: Int,
         confirmSeconds: Int,
         alertPhaseMode: HeartRateAlertPhaseMode,
     ) {
@@ -133,6 +134,7 @@ object HeartRateController {
             targetUpperBpm = normalizedTargetUpper,
             dangerThresholdBpm = normalizedDangerThreshold,
             alertsEnabled = alertsEnabled,
+            normalReadingIntervalSeconds = normalizeHeartRateReadingIntervalSeconds(normalReadingIntervalSeconds),
             confirmSeconds = confirmSeconds.coerceIn(MIN_CONFIRM_SECONDS, MAX_CONFIRM_SECONDS),
             alertPhaseMode = alertPhaseMode,
         )

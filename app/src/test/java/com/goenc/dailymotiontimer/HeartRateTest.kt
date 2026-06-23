@@ -14,6 +14,9 @@ import com.goenc.dailymotiontimer.heartrate.NORMAL_DANGER_HEART_RATE_ALERT_MESSA
 import com.goenc.dailymotiontimer.heartrate.NORMAL_HIGH_HEART_RATE_ALERT_MESSAGE
 import com.goenc.dailymotiontimer.heartrate.NORMAL_LOW_HEART_RATE_ALERT_MESSAGE
 import com.goenc.dailymotiontimer.heartrate.NORMAL_TOO_HIGH_HEART_RATE_ALERT_MESSAGE
+import com.goenc.dailymotiontimer.heartrate.formatHeartRateReadingInterval
+import com.goenc.dailymotiontimer.heartrate.nextNormalHeartRateReadingDelayMillis
+import com.goenc.dailymotiontimer.heartrate.normalizeHeartRateReadingIntervalSeconds
 import com.goenc.dailymotiontimer.heartrate.resolveHeartRateAlertSpeechMessage
 import com.goenc.dailymotiontimer.heartrate.resolveHeartRateReadingSpeechMessage
 import com.goenc.dailymotiontimer.heartrate.shouldEnableCurrentHeartRateReading
@@ -245,5 +248,19 @@ class HeartRateTest {
                 intervalSettings = settings,
             ),
         )
+    }
+
+    @Test
+    fun normalHeartRateReadingIntervalUsesConfiguredOptions() {
+        assertEquals(90, normalizeHeartRateReadingIntervalSeconds(90))
+        assertEquals(60, normalizeHeartRateReadingIntervalSeconds(45))
+        assertEquals("1分30秒ごと", formatHeartRateReadingInterval(90))
+    }
+
+    @Test
+    fun nextNormalHeartRateReadingDelayAlignsToNextBoundary() {
+        assertEquals(60_000L, nextNormalHeartRateReadingDelayMillis(elapsedSeconds = 0, intervalSeconds = 60))
+        assertEquals(30_000L, nextNormalHeartRateReadingDelayMillis(elapsedSeconds = 30, intervalSeconds = 60))
+        assertEquals(90_000L, nextNormalHeartRateReadingDelayMillis(elapsedSeconds = 90, intervalSeconds = 90))
     }
 }

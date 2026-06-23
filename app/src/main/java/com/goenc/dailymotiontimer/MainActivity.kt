@@ -576,6 +576,7 @@ private fun IntervalSettingsScreen(
         targetUpperBpm: Int,
         dangerThresholdBpm: Int,
         alertsEnabled: Boolean,
+        normalReadingIntervalSeconds: Int,
         confirmSeconds: Int,
         alertPhaseMode: HeartRateAlertPhaseMode,
     ) -> Unit,
@@ -757,6 +758,7 @@ private fun NormalSettingsScreen(
         targetUpperBpm: Int,
         dangerThresholdBpm: Int,
         alertsEnabled: Boolean,
+        normalReadingIntervalSeconds: Int,
         confirmSeconds: Int,
         alertPhaseMode: HeartRateAlertPhaseMode,
     ) -> Unit,
@@ -804,6 +806,7 @@ private fun NormalSettingsScreen(
                 showVoiceAlertSwitch = false,
                 showAlertPhaseModeSelector = false,
                 showAlertToggleButtons = true,
+                showReadingIntervalSelector = true,
             )
             Spacer(modifier = Modifier.height(24.dp))
         }

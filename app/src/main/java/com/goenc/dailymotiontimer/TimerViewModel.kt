@@ -3,19 +3,25 @@ package com.goenc.dailymotiontimer
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import android.os.SystemClock
+import androidx.lifecycle.viewModelScope
 import com.goenc.dailymotiontimer.heartrate.HeartRateAlertPhaseMode
 import com.goenc.dailymotiontimer.heartrate.HeartRateController
 import com.goenc.dailymotiontimer.heartrate.HeartRateGraphMode
 import com.goenc.dailymotiontimer.heartrate.HeartRateUiState
+import com.goenc.dailymotiontimer.heartrate.nextNormalHeartRateReadingDelayMillis
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
 class TimerViewModel(application: Application) : AndroidViewModel(application) {
     val uiState: StateFlow<TimerUiState> = WalkingTimerController.uiState
     val heartRateUiState: StateFlow<HeartRateUiState> = HeartRateController.uiState
     private val _normalTimerUiState = MutableStateFlow(NormalTimerUiState())
     val normalTimerUiState: StateFlow<NormalTimerUiState> = _normalTimerUiState.asStateFlow()
+    private var normalHeartRateReadingJob: Job? = null
 
     init {
         WalkingTimerController.restoreState(getApplication())
@@ -41,6 +47,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         }
         val nowElapsedRealtime = SystemClock.elapsedRealtime()
         val currentState = _normalTimerUiState.value.resolveAt(nowElapsedRealtime)
+        val isFreshStart = !currentState.isRunning && !currentState.isPaused
         val updatedState = when {
             currentState.isRunning -> currentState
             currentState.isPaused -> currentState.copy(
@@ -62,6 +69,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         }
         _normalTimerUiState.value = updatedState.resolveAt(nowElapsedRealtime)
         HeartRateController.syncNormalTimerState(_normalTimerUiState.value)
+        scheduleNormalHeartRateReading(isImmediate = isFreshStart)
     }
 
     fun pauseNormalTimer() {
@@ -76,11 +84,13 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
             pauseStartedElapsedRealtime = nowElapsedRealtime,
         )
         HeartRateController.syncNormalTimerState(_normalTimerUiState.value)
+        cancelNormalHeartRateReading()
     }
 
     fun stopNormalTimer() {
         _normalTimerUiState.value = NormalTimerUiState()
         HeartRateController.syncNormalTimerState(_normalTimerUiState.value)
+        cancelNormalHeartRateReading()
     }
 
     fun updateFastPhaseDurationSeconds(durationSeconds: Int) {
@@ -156,6 +166,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         targetUpperBpm: Int,
         dangerThresholdBpm: Int,
         alertsEnabled: Boolean,
+        normalReadingIntervalSeconds: Int,
         confirmSeconds: Int,
         alertPhaseMode: HeartRateAlertPhaseMode,
     ) {
@@ -165,9 +176,13 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
             targetUpperBpm,
             dangerThresholdBpm,
             alertsEnabled,
+            normalReadingIntervalSeconds,
             confirmSeconds,
             alertPhaseMode,
         )
+        if (_normalTimerUiState.value.isRunning) {
+            scheduleNormalHeartRateReading(isImmediate = false)
+        }
     }
 
     fun updateHeartRateAlertVolume(volume: Float) {
@@ -184,5 +199,42 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setHeartRateGraphMode(mode: HeartRateGraphMode) {
         HeartRateController.setGraphMode(mode)
+    }
+
+    override fun onCleared() {
+        cancelNormalHeartRateReading()
+        super.onCleared()
+    }
+
+    private fun scheduleNormalHeartRateReading(isImmediate: Boolean) {
+        cancelNormalHeartRateReading()
+        val currentState = _normalTimerUiState.value.resolveAt(SystemClock.elapsedRealtime())
+        val currentHeartRateSettings = heartRateUiState.value.settings
+        if (!currentState.isRunning || !currentHeartRateSettings.alertsEnabled) {
+            return
+        }
+        val readingIntervalSeconds = currentHeartRateSettings.normalReadingIntervalSeconds
+        normalHeartRateReadingJob = viewModelScope.launch {
+            if (isImmediate) {
+                HeartRateController.readCurrentHeartRate(getApplication())
+            }
+            while (_normalTimerUiState.value.isRunning) {
+                val latestState = _normalTimerUiState.value.resolveAt(SystemClock.elapsedRealtime())
+                val delayMillis = nextNormalHeartRateReadingDelayMillis(
+                    elapsedSeconds = latestState.elapsedSeconds,
+                    intervalSeconds = readingIntervalSeconds,
+                )
+                delay(delayMillis)
+                if (!_normalTimerUiState.value.isRunning) {
+                    break
+                }
+                HeartRateController.readCurrentHeartRate(getApplication())
+            }
+        }
+    }
+
+    private fun cancelNormalHeartRateReading() {
+        normalHeartRateReadingJob?.cancel()
+        normalHeartRateReadingJob = null
     }
 }
