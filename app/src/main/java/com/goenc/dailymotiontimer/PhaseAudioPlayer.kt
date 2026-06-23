@@ -55,12 +55,16 @@ internal class PhaseAudioPlayer(context: Context) {
         )
     }
 
-    fun playElapsedMilestone(phase: WalkingPhase, elapsedMinutes: Int) {
+    fun playElapsedMilestone(
+        phase: WalkingPhase,
+        elapsedMinutes: Int,
+        onCompleted: (() -> Unit)? = null,
+    ) {
         val cue = AudioCue.elapsedMilestone(phase, elapsedMinutes) ?: run {
             Log.w(TAG, "Ignoring unsupported ${phase.name} elapsed milestone minutes=$elapsedMinutes")
             return
         }
-        playSpeech(cue = cue, logEntryId = null, onCompleted = null)
+        playSpeech(cue = cue, logEntryId = null, onCompleted = onCompleted)
     }
 
     fun playBeep(pitchPreset: BeepPitchPreset) {

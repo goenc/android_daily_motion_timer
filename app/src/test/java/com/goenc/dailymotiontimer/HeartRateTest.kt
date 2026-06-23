@@ -15,6 +15,7 @@ import com.goenc.dailymotiontimer.heartrate.NORMAL_HIGH_HEART_RATE_ALERT_MESSAGE
 import com.goenc.dailymotiontimer.heartrate.NORMAL_LOW_HEART_RATE_ALERT_MESSAGE
 import com.goenc.dailymotiontimer.heartrate.NORMAL_TOO_HIGH_HEART_RATE_ALERT_MESSAGE
 import com.goenc.dailymotiontimer.heartrate.resolveHeartRateAlertSpeechMessage
+import com.goenc.dailymotiontimer.heartrate.resolveHeartRateReadingSpeechMessage
 import com.goenc.dailymotiontimer.heartrate.shouldEnableHeartRateAlerts
 import com.goenc.dailymotiontimer.WalkingPhase
 import org.junit.Assert.assertEquals
@@ -200,5 +201,30 @@ class HeartRateTest {
                 intervalSettings = settings,
             ),
         )
+    }
+
+    @Test
+    fun intervalTimerDoesNotAnnounceWhenReadingIsDisabled() {
+        val settings = HeartRateSettings(
+            alertsEnabled = false,
+            alertPhaseMode = HeartRateAlertPhaseMode.Both,
+        )
+
+        assertEquals(
+            false,
+            shouldEnableHeartRateAlerts(
+                isNormalTimerRunning = false,
+                isIntervalTimerRunning = true,
+                intervalPhase = WalkingPhase.Fast,
+                normalSettings = settings,
+                intervalSettings = settings,
+            ),
+        )
+    }
+
+    @Test
+    fun heartRateReadingSpeechReadsCurrentValue() {
+        assertEquals("心拍、123", resolveHeartRateReadingSpeechMessage(123))
+        assertNull(resolveHeartRateReadingSpeechMessage(0))
     }
 }

@@ -10,6 +10,7 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import android.util.Log
+import com.goenc.dailymotiontimer.heartrate.HeartRateController
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -335,7 +336,15 @@ class WalkingTimerService : Service() {
     private fun announcePhaseElapsedMilestone(phase: WalkingPhase, elapsedMinutes: Int) {
         val currentAnnouncementVolume = synchronized(stateLock) { announcementVolume }
         phaseAudioPlayer.setAnnouncementVolume(currentAnnouncementVolume)
-        phaseAudioPlayer.playElapsedMilestone(phase, elapsedMinutes)
+        phaseAudioPlayer.playElapsedMilestone(
+            phase = phase,
+            elapsedMinutes = elapsedMinutes,
+            onCompleted = ::announceCurrentHeartRate,
+        )
+    }
+
+    private fun announceCurrentHeartRate(): Boolean {
+        return HeartRateController.readCurrentHeartRate(applicationContext)
     }
 
     private fun vibrateSafely() {
@@ -706,10 +715,16 @@ class WalkingTimerService : Service() {
                     phase = phase,
                     logEntryId = logEntryId,
                     onCompleted = {
-                        handlePhaseStartAnnouncementCompleted(
-                            phase = phase,
-                            phaseStartNumber = phaseStartNumber,
-                        )
+                        val heartRateReadingRequested = announceCurrentHeartRate()
+                        serviceScope.launch {
+                            if (heartRateReadingRequested) {
+                                delay(HEART_RATE_READING_DELAY_MILLIS)
+                            }
+                            handlePhaseStartAnnouncementCompleted(
+                                phase = phase,
+                                phaseStartNumber = phaseStartNumber,
+                            )
+                        }
                     },
                 )
             } catch (error: CancellationException) {
@@ -1028,6 +1043,7 @@ class WalkingTimerService : Service() {
         private const val TAG = "WalkingTimerService"
         private const val UNINITIALIZED_PHASE_START_NUMBER = -1L
         private const val COUNTDOWN_REFRESH_INTERVAL_MILLIS = 1_000L
+        private const val HEART_RATE_READING_DELAY_MILLIS = 1_500L
         private val PHASE_ELAPSED_MILESTONE_SECONDS = listOf(60, 120)
 
         fun createIntent(context: Context, action: String): Intent {

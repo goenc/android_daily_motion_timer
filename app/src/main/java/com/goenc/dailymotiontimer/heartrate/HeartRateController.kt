@@ -166,6 +166,17 @@ object HeartRateController {
         }
     }
 
+    fun readCurrentHeartRate(context: Context): Boolean {
+        initialize(context)
+        if (_uiState.value.connectionState != HeartRateConnectionState.CONNECTED || _uiState.value.heartRate <= 0) {
+            return false
+        }
+        context.applicationContext.startService(
+            HeartRateService.createIntent(context, HeartRateService.ACTION_READ_CURRENT_HEART_RATE),
+        )
+        return true
+    }
+
     fun setGraphMode(mode: HeartRateGraphMode) {
         val context = checkNotNull(applicationContext) { "HeartRateController is not initialized" }
         val preferences = HeartRatePreferences(

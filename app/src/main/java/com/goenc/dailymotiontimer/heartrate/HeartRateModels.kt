@@ -130,7 +130,7 @@ internal fun shouldEnableHeartRateAlerts(
     if (!isIntervalTimerRunning || intervalPhase == null) {
         return false
     }
-    return intervalSettings.alertPhaseMode.shouldAnnounce(intervalPhase)
+    return intervalSettings.alertsEnabled && intervalSettings.alertPhaseMode.shouldAnnounce(intervalPhase)
 }
 
 internal fun resolveHeartRateAlertSpeechMessage(
@@ -151,6 +151,13 @@ internal fun resolveHeartRateAlertSpeechMessage(
         NORMAL_LOW_HEART_RATE_ALERT_MESSAGE -> NORMAL_LOW_HEART_RATE_ALERT_MESSAGE
         else -> alertMessage
     }
+}
+
+internal fun resolveHeartRateReadingSpeechMessage(heartRate: Int): String? {
+    if (heartRate <= 0) {
+        return null
+    }
+    return "心拍、$heartRate"
 }
 
 internal fun normalizeHeartRateAlertVolume(volume: Float): Float {

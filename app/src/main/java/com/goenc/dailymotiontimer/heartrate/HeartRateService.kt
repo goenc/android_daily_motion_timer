@@ -76,6 +76,7 @@ class HeartRateService : Service(), TextToSpeech.OnInitListener {
             ACTION_DISCONNECT -> disconnectAndStop(clearDevice = false)
             ACTION_FORGET_DEVICE -> disconnectAndStop(clearDevice = true)
             ACTION_UPDATE_SETTINGS -> ensureAlertSettings()
+            ACTION_READ_CURRENT_HEART_RATE -> speakCurrentHeartRate()
             else -> {
                 startForeground(NOTIFICATION_ID, buildNotification("接続を準備中"))
                 reconnectEnabled = true
@@ -289,6 +290,24 @@ class HeartRateService : Service(), TextToSpeech.OnInitListener {
         textToSpeech?.speak(speechText, TextToSpeech.QUEUE_FLUSH, params, "heart_rate_alert")
     }
 
+    private fun speakCurrentHeartRate() {
+        if (state != HeartRateConnectionState.CONNECTED || !shouldAnnounceForCurrentTimerState()) {
+            return
+        }
+        val speechText = resolveHeartRateReadingSpeechMessage(heartRate) ?: return
+        if (!speechReady) {
+            pendingSpeech = speechText
+            return
+        }
+        val params = Bundle().apply {
+            putFloat(
+                TextToSpeech.Engine.KEY_PARAM_VOLUME,
+                heartRateAlertVolumeToSpeechVolume(alertVolume),
+            )
+        }
+        textToSpeech?.speak(speechText, TextToSpeech.QUEUE_FLUSH, params, "heart_rate_reading")
+    }
+
     private fun shouldAnnounceForCurrentTimerState(): Boolean {
         val intervalState = currentTimerState()
         return shouldEnableHeartRateAlerts(
@@ -349,6 +368,7 @@ class HeartRateService : Service(), TextToSpeech.OnInitListener {
         const val ACTION_DISCONNECT = "com.goenc.dailymotiontimer.heartrate.DISCONNECT"
         const val ACTION_FORGET_DEVICE = "com.goenc.dailymotiontimer.heartrate.FORGET_DEVICE"
         const val ACTION_UPDATE_SETTINGS = "com.goenc.dailymotiontimer.heartrate.UPDATE_SETTINGS"
+        const val ACTION_READ_CURRENT_HEART_RATE = "com.goenc.dailymotiontimer.heartrate.READ_CURRENT_HEART_RATE"
         private const val CHANNEL_ID = "heart_rate_connection"
         private const val NOTIFICATION_ID = 1002
         private const val RECONNECT_DELAY_MS = 5_000L
