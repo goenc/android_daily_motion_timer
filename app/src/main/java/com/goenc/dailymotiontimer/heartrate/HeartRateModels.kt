@@ -133,6 +133,18 @@ internal fun shouldEnableHeartRateAlerts(
     return intervalSettings.alertsEnabled && intervalSettings.alertPhaseMode.shouldAnnounce(intervalPhase)
 }
 
+internal fun shouldEnableCurrentHeartRateReading(
+    isNormalTimerRunning: Boolean,
+    isIntervalTimerRunning: Boolean,
+    normalSettings: HeartRateSettings,
+    intervalSettings: HeartRateSettings,
+): Boolean {
+    if (isNormalTimerRunning) {
+        return normalSettings.alertsEnabled
+    }
+    return isIntervalTimerRunning && intervalSettings.alertsEnabled
+}
+
 internal fun resolveHeartRateAlertSpeechMessage(
     alertMessage: String,
     isNormalTimerActive: Boolean,

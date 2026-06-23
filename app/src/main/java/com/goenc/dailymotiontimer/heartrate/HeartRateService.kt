@@ -291,7 +291,7 @@ class HeartRateService : Service(), TextToSpeech.OnInitListener {
     }
 
     private fun speakCurrentHeartRate() {
-        if (state != HeartRateConnectionState.CONNECTED || !shouldAnnounceForCurrentTimerState()) {
+        if (state != HeartRateConnectionState.CONNECTED || !shouldReadCurrentHeartRateForCurrentTimerState()) {
             return
         }
         val speechText = resolveHeartRateReadingSpeechMessage(heartRate) ?: return
@@ -314,6 +314,16 @@ class HeartRateService : Service(), TextToSpeech.OnInitListener {
             isNormalTimerRunning = HeartRateController.isNormalTimerRunning(),
             isIntervalTimerRunning = intervalState?.isRunning == true,
             intervalPhase = intervalState?.currentPhase,
+            normalSettings = preferences.loadSettings(HeartRateGraphMode.Normal),
+            intervalSettings = preferences.loadSettings(HeartRateGraphMode.Interval),
+        )
+    }
+
+    private fun shouldReadCurrentHeartRateForCurrentTimerState(): Boolean {
+        val intervalState = currentTimerState()
+        return shouldEnableCurrentHeartRateReading(
+            isNormalTimerRunning = HeartRateController.isNormalTimerRunning(),
+            isIntervalTimerRunning = intervalState?.isRunning == true,
             normalSettings = preferences.loadSettings(HeartRateGraphMode.Normal),
             intervalSettings = preferences.loadSettings(HeartRateGraphMode.Interval),
         )
