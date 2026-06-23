@@ -157,7 +157,7 @@ internal fun resolveHeartRateReadingSpeechMessage(heartRate: Int): String? {
     if (heartRate <= 0) {
         return null
     }
-    return "心拍、$heartRate"
+    return heartRate.toString()
 }
 
 internal fun normalizeHeartRateAlertVolume(volume: Float): Float {

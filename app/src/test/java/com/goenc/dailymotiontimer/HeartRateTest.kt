@@ -224,7 +224,7 @@ class HeartRateTest {
 
     @Test
     fun heartRateReadingSpeechReadsCurrentValue() {
-        assertEquals("心拍、123", resolveHeartRateReadingSpeechMessage(123))
+        assertEquals("123", resolveHeartRateReadingSpeechMessage(123))
         assertNull(resolveHeartRateReadingSpeechMessage(0))
     }
 }
